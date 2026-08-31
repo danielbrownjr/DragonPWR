@@ -1,0 +1,5 @@
+idf_component_register(
+    SRCS "app_main.c"
+    INCLUDE_DIRS "."
+    REQUIRES nvs_flash dp_board dp_relay dp_portal dc_wifi dc_evlog
+)

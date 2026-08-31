@@ -1,0 +1,15 @@
+# Byte-for-byte the STOCK Panda PWR table, so DragonPWR can be installed by OTA
+# from the stock web UI: the stock bootloader survives and only an app slot is
+# written. Recovered from Recovery_tool.rar, not inferred - see
+# docs/HARDWARE_ANALYSIS.md.
+#
+# The 1472 K spiffs partition is unused by this firmware. It is kept anyway:
+# dropping it would grow the app slots, and an image built for a different table
+# cannot be installed over stock.
+#
+# Name,     Type, SubType,  Offset,    Size,      Flags
+nvs,        data, nvs,      0x9000,    0x5000,
+otadata,    data, ota,      0xe000,    0x2000,
+app0,       app,  ota_0,    0x10000,   0x140000,
+app1,       app,  ota_1,    0x150000,  0x140000,
+spiffs,     data, spiffs,   0x290000,  0x170000,

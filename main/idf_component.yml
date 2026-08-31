@@ -1,0 +1,17 @@
+dependencies:
+  dc_evlog:
+    git: https://github.com/justinh-rahb/dragon-core.git
+    path: components/dc_evlog
+    version: v0.30.0
+  dc_wifi:
+    git: https://github.com/justinh-rahb/dragon-core.git
+    path: components/dc_wifi
+    version: v0.30.0
+  dc_ui:
+    git: https://github.com/justinh-rahb/dragon-core.git
+    path: components/dc_ui
+    version: v0.30.0
+  dc_portal:
+    git: https://github.com/justinh-rahb/dragon-core.git
+    path: components/dc_portal
+    version: v0.30.0

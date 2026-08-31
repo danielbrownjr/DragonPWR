@@ -1,0 +1,65 @@
+dependencies:
+  dc_evlog:
+    component_hash: bd299b5eb1ea5c7898e37fa34387f7951de3a7dfeb5975c63f222899e527cb75
+    dependencies:
+    - name: idf
+      version: '>=5.3'
+    source:
+      git: https://github.com/justinh-rahb/dragon-core.git
+      path: components/dc_evlog
+      type: git
+    version: 8d5a61de8544a5b82cc3c6d9c7dc593ce06bb8bd
+  dc_portal:
+    component_hash: 44ade1cd873784004da6b2ea2994c9559be7156e5a15b070b161fd3bd5c37d84
+    dependencies:
+    - name: idf
+      version: '>=5.3'
+    source:
+      git: https://github.com/justinh-rahb/dragon-core.git
+      path: components/dc_portal
+      type: git
+    version: 8d5a61de8544a5b82cc3c6d9c7dc593ce06bb8bd
+  dc_ui:
+    component_hash: ca14b41ee4ec39a8fa8a20e108b134e144a32b99d3e559ba608c4ace0409e8e4
+    dependencies:
+    - name: idf
+      version: '>=5.3'
+    source:
+      git: https://github.com/justinh-rahb/dragon-core.git
+      path: components/dc_ui
+      type: git
+    version: 8d5a61de8544a5b82cc3c6d9c7dc593ce06bb8bd
+  dc_wifi:
+    component_hash: 6a539e7b6d36677e412f736838ed6613325f2a4fc49c0ec53dd59543bd9e777e
+    dependencies:
+    - name: idf
+      version: '>=5.3'
+    - name: espressif/mdns
+      version: ^1.4.0
+    source:
+      git: https://github.com/justinh-rahb/dragon-core.git
+      path: components/dc_wifi
+      type: git
+    version: 8d5a61de8544a5b82cc3c6d9c7dc593ce06bb8bd
+  espressif/mdns:
+    component_hash: 3ba256ac95e07c274be53cbd73f06cb846c403b61e8fbdf1be57bdb79db7a63e
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.12.0
+  idf:
+    source:
+      type: idf
+    version: 5.3.1
+direct_dependencies:
+- dc_evlog
+- dc_portal
+- dc_ui
+- dc_wifi
+manifest_hash: 079a3bf19050f3fbec9fe1fc399f46d82a24603f0495b30632f320534f56d0e1
+target: esp32c2
+version: 2.0.0

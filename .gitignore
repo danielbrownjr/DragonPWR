@@ -2,11 +2,12 @@
 analysis/stock/
 analysis/out/
 
-# ESP-IDF
-firmware/build/
-firmware/sdkconfig
-firmware/sdkconfig.old
-firmware/managed_components/
+# ESP-IDF build output. dependencies.lock is deliberately NOT ignored:
+# dragon-core is pinned by tag, and the lock is what makes that reproducible.
+build/
+sdkconfig
+sdkconfig.old
+managed_components/
 
 # Python
 __pycache__/

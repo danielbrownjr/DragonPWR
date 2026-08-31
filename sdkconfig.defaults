@@ -1,0 +1,27 @@
+# The stock module is an ESP8684-MINI-1-H4: ESP32-C2, RISC-V, 272 KB SRAM.
+CONFIG_IDF_TARGET="esp32c2"
+
+# 4 MB, DIO - matches the stock image header and the factory flash tool config.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+
+# The stock partition table, so install-over-stock stays possible.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# The app slot is 1280 K and the sibling Dragon products already build to
+# ~1.15 MB without a meter driver. Optimize for size from the start.
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+
+# A bad image that boots but cannot talk to the network is otherwise only
+# recoverable over serial, and this device lives behind a mains relay.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# Captive-portal probes from iOS / Android / Windows arrive with 700+ bytes of
+# headers; the 512 B default answers 431, which browsers render as a hard error.
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=2048
+CONFIG_HTTPD_MAX_URI_LEN=1024
+
+# Room for logging before the portal is up.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
