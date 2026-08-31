@@ -78,7 +78,9 @@ stock binary and has never been checked against a board.
       the app images but not a full flash dump, so this is the only way back
 - [ ] Confirm GPIO7 drives the relay, and that it is active **low**
 - [ ] Confirm GPIO18 switches USB1, active high
-- [ ] Identify GPIO6 physically (the handling says maintained-contact switch)
+- [ ] Identify GPIO6 physically. The handling is edge-triggered-toggle, but the
+      manual documents only the Bind button and no photo shows a second control,
+      so what drives this pin is genuinely unknown
 - [ ] Photograph the metering IC and match it against the register map
 - [ ] Determine whether the relay is latching or momentary
 - [ ] Check whether the stock web UI's OTA accepts a foreign image; if it

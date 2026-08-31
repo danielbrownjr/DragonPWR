@@ -109,9 +109,13 @@ Application code occupies roughly `0x42004000`–`0x4200d000`; everything above
 > the first bench test must be done with the mains side disconnected.
 
 GPIO6 having no pull-up means it is externally driven, and "invert the target on
-every transition" is exactly how you service a **maintained-contact** switch (a
-rocker or latching button on the enclosure) rather than a momentary one. That is
-an inference from the handling, not from a schematic.
+every transition" is how you service a **maintained-contact** switch (a rocker or
+latching button) rather than a momentary one.
+
+But that reading is weaker than it first looks: BTT's user manual documents
+exactly one control, the Bind button, and no published product photo shows a
+second one. So the *handling* is edge-triggered-toggle for certain; what is
+physically on the other end of GPIO6 is genuinely unknown.
 
 The `power_state` / `usb_state` polarity pair is worth restating because it is
 easy to get backwards: the same JSON builder reads both pins eight bytes apart
