@@ -34,6 +34,39 @@ DragonPWR targets this table byte-for-byte so it can be installed by OTA from th
 stock web UI, the same way DragonVent and DragonStatus install over their stock
 firmware.
 
+## Back up stock first
+
+BIGTREETECH publishes the app images but never a full flash dump, so the backup
+you take before your first install is the only way back to stock.
+
+Power the unit from the Type-C `Prog` port only — leave the IEC input unplugged
+and nothing in the C13 socket. The board runs happily off USB, and there is no
+reason for mains to be present while you are talking to the bootloader.
+
+```
+python -m esptool --chip esp32c2 -p COM5 flash_id
+```
+
+```
+python -m esptool --chip esp32c2 -p COM5 -b 460800 read_flash 0x0 0x400000 stock-panda-pwr-backup.bin
+```
+
+Then check it actually came out whole. A truncated read looks exactly like a good
+one until the day you need it:
+
+```
+python analysis/verify_backup.py stock-panda-pwr-backup.bin
+```
+
+Keep the dump off the device and out of git — it contains the NVS partition, so
+any Wi-Fi credentials the unit was configured with are in there.
+
+To restore:
+
+```
+python -m esptool --chip esp32c2 -p COM5 -b 460800 write_flash 0x0 stock-panda-pwr-backup.bin
+```
+
 ## Building
 
 Requires ESP-IDF 5.3 or newer (built and verified against v5.3.1) and a host
@@ -55,7 +88,7 @@ reproducible.
 | `components/dp_board/` | The pin map, and the only place polarity is written down |
 | `components/dp_relay/` | Mains + USB1 outputs, safe boot state, restore policy |
 | `components/dp_portal/` | Product API v2, stock-compatible routes, safety guards |
-| `analysis/` | Static-analysis tooling for the stock firmware |
+| `analysis/` | Static-analysis tooling for the stock firmware, and the backup verifier |
 
 ## Documentation
 

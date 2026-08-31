@@ -44,9 +44,12 @@ class Segment:
 
 
 class AppImage:
-    def __init__(self, path):
+    def __init__(self, path, blob=None):
+        # `blob` lets a caller parse an image carved out of a larger buffer -- an
+        # app slot inside a full-flash dump, say -- without writing it out first.
         self.path = path
-        blob = open(path, "rb").read()
+        if blob is None:
+            blob = open(path, "rb").read()
         self.blob = blob
         (magic, seg_count, self.spi_mode, spi_sz_sp, self.entry_addr,
          self.wp_pin, d0, d1, d2, self.chip_id, self.min_rev,
