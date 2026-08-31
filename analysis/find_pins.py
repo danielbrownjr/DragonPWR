@@ -10,6 +10,8 @@ Three passes:
             the hardware can possibly be
   gpio      every gpio_config() call site, with its gpio_config_t rebuilt from
             the immediate stores that construct it on the stack
+  usage     gpio_set_level() / gpio_get_level() call sites that name a pin
+            outright, which is what ties a pin to a product function
   buses     uart_set_pin() and spi_bus_initialize() argument constants, which
             carry the bus pin assignments
 
@@ -18,6 +20,7 @@ registers and the spills of those registers into sp-relative slots. Anything
 computed at run time is reported as "?" rather than guessed.
 """
 import argparse
+import itertools
 import re
 
 from codemap import CodeMap
@@ -169,6 +172,70 @@ def report_gpio(cm):
               f" (in fn 0x{cm.enclosing_function(site):08x})")
 
 
+APP_CODE = range(0x42004000, 0x4200D000)
+
+
+def _reg_immediate(cm, site, reg, back=20):
+    """Immediate in `reg` at a call site, or None if it is computed."""
+    i = cm.by_addr[site]
+    for j in range(i - 1, max(0, i - back), -1):
+        ins = cm.insns[j]
+        if ins.mnemonic in ("jal", "jalr", "c.jal", "c.jalr"):
+            return None       # an intervening call clobbers the arg registers
+        ops = [p.strip() for p in ins.op_str.split(",")]
+        if not ops or ops[0] != reg:
+            continue
+        if ins.mnemonic == "c.li" and len(ops) == 2:
+            return _int(ops[1])
+        if ins.mnemonic == "addi" and len(ops) == 3 and ops[1] == "zero":
+            return _int(ops[2])
+        return None
+    return None
+
+
+def _reads_a1(cm, fn):
+    """Whether a function takes a second argument.
+
+    Bounded by the next known function start: gpio_get_level is only a handful
+    of instructions, so a fixed instruction budget runs straight past its return
+    and picks up the next function's registers.
+    """
+    i = cm.by_addr.get(fn)
+    if i is None:
+        return False
+    end = min((s for s in cm.calls if s > fn), default=fn + 0x40)
+    body = itertools.takewhile(lambda ins: ins.address < end, cm.insns[i:])
+    return any("a1" in ins.op_str for ins in body)
+
+
+def report_pin_usage(cm):
+    """gpio_set_level / gpio_get_level call sites that name a pin outright.
+
+    Both live in gpio.c just below gpio_config and neither names itself in
+    rodata, so they are found positionally and then told apart by arity:
+    gpio_set_level takes a level in a1, gpio_get_level does not.
+    """
+    named = cm.string_addr("gpio_config")
+    if not named:
+        return
+    config_fn = cm.enclosing_function(cm.xrefs(named[0])[0])
+    print("\n== GPIO leaf calls from application code")
+    window = range(config_fn - 0x400, config_fn)
+    for fn in sorted(t for t in cm.calls if t in window):
+        sites = [s for s in cm.callers(fn) if s in APP_CODE]
+        pins = [(s, _reg_immediate(cm, s, "a0")) for s in sites]
+        if not any(p is not None and 0 <= p <= 20 for _, p in pins):
+            continue
+        takes_level = _reads_a1(cm, fn)
+        print(f"   0x{fn:08x}  {'gpio_set_level' if takes_level else 'gpio_get_level'}"
+              f" ({len(sites)} application call sites)")
+        for site, pin in pins:
+            level = f"  level={fmt(_reg_immediate(cm, site, 'a1'))}" if takes_level else ""
+            label = f"GPIO{pin}" if pin is not None else "GPIO?"
+            print(f"      0x{site:08x}  {label:<8}{level}"
+                  f"   (in fn 0x{cm.enclosing_function(site):08x})")
+
+
 def report_buses(cm):
     print("\n== bus pin assignments")
 
@@ -217,6 +284,7 @@ def main():
     print()
     report_drivers(cm)
     report_gpio(cm)
+    report_pin_usage(cm)
     report_buses(cm)
 
 

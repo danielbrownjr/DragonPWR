@@ -100,6 +100,23 @@ Application code occupies roughly `0x42004000`–`0x4200d000`; everything above
 | **2** | Energy meter UART1 **TX** | `uart_set_pin(UART1, 2, 3, -1, -1)` at `0x4200b3cc` |
 | **3** | Energy meter UART1 **RX** | same call |
 | **4** | Status LED data (WS2812-style, SPI2 MOSI) | `spi_bus_config_t` at `0x4200b77c` takes `mosi` from the config object's first byte; that object is memcpy'd at `0x420072c6` from the immediate `0x00c0f004`, whose low byte is `0x04` |
+| **7** | **Mains relay — ACTIVE LOW** | `gpio_config` INPUT_OUTPUT at `0x4200724c`; the `/update_ele_data` JSON builder computes `power_state` as `snez(gpio_get_level(7) - 1)` at `0x42005cbc`, i.e. reported ON when the pin reads **0**; the control task drives `gpio_set_level(7, desired ^ 1)` at `0x4200762e` |
+| **18** | **USB1 switch — active high** | `gpio_config` INPUT_OUTPUT at `0x4200725c`; `usb_state` is `seqz(gpio_get_level(18) - 1)` at `0x42005cd8`, i.e. reported ON when the pin reads **1** |
+| **6** | External toggle input | `gpio_config` INPUT, no pull, at `0x42007270`. In `app_ctl_task` (`0x420075f8`–`0x42007636`) its level is compared against the previous value cached at `gp - 0x7d4`; on **any** change the desired-power bit is inverted and written to GPIO7 |
+
+> **GPIO7 idles HIGH for relay-off.** Anything that drives it low energises the
+> relay. Bring-up code must set it high before configuring it as an output, and
+> the first bench test must be done with the mains side disconnected.
+
+GPIO6 having no pull-up means it is externally driven, and "invert the target on
+every transition" is exactly how you service a **maintained-contact** switch (a
+rocker or latching button on the enclosure) rather than a momentary one. That is
+an inference from the handling, not from a schematic.
+
+The `power_state` / `usb_state` polarity pair is worth restating because it is
+easy to get backwards: the same JSON builder reads both pins eight bytes apart
+(`0x42005bf4` for GPIO7, `0x42005bfc` for GPIO18) and then applies **opposite**
+tests to them — `snez` for power, `seqz` for USB.
 
 ### High confidence, one inference step
 
@@ -111,26 +128,25 @@ The descriptor at `gp - 0x544` (`0x3fcad1ec`) reads
 `0a 00 00 00 | 0a 00 00 00 | 05 00 00 00 | 64 00 00 00`. Only the first byte is
 proven to be the pin; the rest is unread.
 
-### Configured, function not yet determined
+### How GPIO7 / GPIO18 / GPIO6 were pinned down
 
-`fn 0x42007232`, called directly from `app_main`, configures exactly three pins
-and nothing else does:
+`fn 0x42007232`, called directly from `app_main`, is the only place these three
+are configured. All three are configured with no pull and no interrupt; GPIO7
+and GPIO18 as `INPUT_OUTPUT` rather than `OUTPUT`, which is consistent with
+firmware that reads back the level it drove — and is why the state JSON can be
+built entirely from `gpio_get_level`.
 
-| GPIO | Mode | Pull | Interrupt |
-|---|---|---|---|
-| **7** | `INPUT_OUTPUT` | none | disabled |
-| **18** | `INPUT_OUTPUT` | none | disabled |
-| **6** | `INPUT` | none | disabled |
+The gpio.c leaves are not named in rodata. `gpio_set_level` (`0x420145bc`) was
+found as the call immediately after `gpio_config` inside the output-configure
+helper `0x4200b510`, and both were then confirmed from their bodies:
+`0x420145bc` writes the `W1TS` / `W1TC` registers at `+0x8` / `+0xc` and takes a
+level in `a1`; `0x420145ec` reads the `IN` register at `+0x3c` and takes only a
+pin. `find_pins.py` rediscovers them positionally and tells them apart by arity.
 
-GPIO7 and GPIO18 are the only firmware-driven output-capable pins in the image,
-so they **are** the mains relay and the USB1 switch — but which is which is not
-yet established, because the `gpio_set_level` call sites pass the pin from a
-variable rather than an immediate. `INPUT_OUTPUT` rather than `OUTPUT` is
-consistent with firmware that reads back the level it drove.
-
-GPIO6's role is open. Candidates: relay/USB feedback, a USB power-good input, or
-a zero-cross line. It has no interrupt configured, which argues against
-zero-cross.
+`fn 0x42005748` is the HTTP handler block — it holds the `/update_ele_data` JSON
+fragments, the captive-portal redirect, and the firmware-version string — so the
+`gpio_get_level` results it formats are definitionally the pins behind the
+public API's `power_state` and `usb_state`.
 
 ### Reserved by the C2 / module
 
@@ -203,17 +219,20 @@ the first milestone.
 
 ## Open questions
 
-1. **Which of GPIO7 / GPIO18 is the relay and which is USB1?** Resolvable on the
-   bench in under a minute: drive one high with the load disconnected and listen
-   for the relay. Do this before anything is wired to mains.
-2. **What is GPIO6?** Trace it, or watch it while toggling the relay and USB.
-3. **Which metering IC?** Board photo. The register map above then either matches
-   a datasheet or it does not.
-4. **Is the relay latching or momentary?** Determines power-loss behaviour and
-   whether the boot-time default can be "off" safely.
-5. **What are the remaining fields of the button descriptor at `0x3fcad1ec`?**
-   Long-press thresholds are documented by BTT as 3 s (pair) and 8 s (factory
-   reset); confirm against the binary rather than trusting the wiki.
+1. **Which metering IC?** A board photo. The register map above then either
+   matches a datasheet or it does not.
+2. **Is the relay latching or momentary?** Not decidable from the binary.
+   Determines power-loss behaviour and whether "off" is a safe boot default.
+   Active-low drive plus a maintained-contact input on GPIO6 hints at a
+   conventional (non-latching) relay held on by the pin, but that is a guess.
+3. **What is GPIO6 physically?** The handling says maintained-contact switch;
+   confirm by tracing it or by watching it while working the enclosure controls.
+4. **What are the remaining fields of the button descriptor at `0x3fcad1ec`?**
+   BTT documents 3 s (pair) and 8 s (factory reset); confirm against the binary
+   rather than trusting the wiki.
+5. **Does the stock web UI's OTA accept a foreign image?** If it does, DragonPWR
+   installs over stock from a browser like DragonVent and DragonStatus do. If it
+   validates the project name, the first install needs serial.
 
 ## Tools
 
@@ -221,7 +240,7 @@ the first milestone.
 |---|---|
 | `analysis/esp_image.py` | ESP-IDF app-image reader: header facts, segments, load-address reads. No esptool dependency |
 | `analysis/codemap.py` | RV32IMC disassembly, `lui`/`auipc` address recovery, string index, call graph, `__FUNCTION__`-based function identification |
-| `analysis/find_pins.py` | The three reports above |
+| `analysis/find_pins.py` | The four reports above |
 | `analysis/dumpfn.py` | Disassemble one function with string and call-target annotations |
 | `analysis/find_gpio_config.py` | Scans rodata for `gpio_config_t` initializer templates. Finds nothing on this image — GCC builds the struct with inline immediates rather than copying a template — which is why `find_pins.py` replays the stack instead. Kept because it is the first thing to try on a new image |
 

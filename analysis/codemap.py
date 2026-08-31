@@ -51,7 +51,10 @@ class CodeMap:
 
     def _disassemble(self):
         md = Cs(CS_ARCH_RISCV, CS_MODE_RISCV32 | CS_MODE_RISCVC)
-        for seg in self.img.segments:
+        # Segments are stored IROM-after-IRAM in the image, so walk them in load
+        # order: callers rely on self.insns being globally address-sorted when
+        # they scan forward to a function's end.
+        for seg in sorted(self.img.segments, key=lambda s: s.load_addr):
             if "code" not in region_of(self.img.chip, seg.load_addr):
                 continue
             for ins in md.disasm(seg.data, seg.load_addr):
