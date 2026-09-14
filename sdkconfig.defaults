@@ -1,6 +1,14 @@
 # The stock module is an ESP8684-MINI-1-H4: ESP32-C2, RISC-V, 272 KB SRAM.
 CONFIG_IDF_TARGET="esp32c2"
 
+# esptool's hardware-measured chip detection reports this unit's crystal as
+# 26MHz, not the Kconfig default of 40MHz. Left at 40 (the default), every
+# crystal-derived clock ran scaled by 26/40 — including the Wi-Fi radio's
+# frequency synthesis, which made the softAP transmit off-frequency: no
+# crash, esp_wifi_start() returned ESP_OK, but it was invisible to every
+# scanner. See docs/BENCH_NOTES.md, 2026-09-14 session.
+CONFIG_XTAL_FREQ_26=y
+
 # 4 MB, DIO - matches the stock image header and the factory flash tool config.
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_ESPTOOLPY_FLASHSIZE="4MB"

@@ -1,7 +1,76 @@
-# Bench session — 2026-09-09
+# Bench sessions
 
-Where Phase 0 stands after the first real hardware session, and exactly what
-to pick up next time.
+Where Phase 0 stands after each real hardware session, and exactly what to
+pick up next time.
+
+## 2026-09-14 — softAP fixed: XTAL_FREQ mismatch, not stale NVS
+
+Picking up from the 09-09 session's blocker: the softAP was invisible over
+the air despite a clean boot log and `esp_wifi_start()` returning `ESP_OK`.
+The working theory going in was stale NVS/PHY-cal data; the NVS erase from
+last session was confirmed to have taken (`dc_wifi: no saved WiFi
+credentials` on every fresh boot this session), but the AP was **still**
+invisible — an over-the-air scan from the dev machine's own Wi-Fi adapter
+found 12 real networks nearby and no `DragonPWR_BBF9` among them. So the
+NVS theory was wrong, or at least incomplete.
+
+**Root cause found:** `sdkconfig` had `CONFIG_XTAL_FREQ_40=y`, but
+`esptool`'s hardware-measured chip detection reports this board's actual
+crystal as 26MHz (`esptool --port COM6 chip-id`: "Crystal frequency:
+26MHz", chip is ESP8684H rev v1.2). With the wrong assumed crystal,
+clock-derived peripherals run scaled by the true/assumed ratio (26/40 =
+0.65×) — confirmed directly on the console UART, which only reads cleanly
+at 74880 baud instead of the configured 115200 (74880 = 115200 × 0.65,
+exact). The same boot log showed `dc_wifi: scan done: 0 networks` on the
+STA side — the radio wasn't seeing *any* real traffic, not just failing to
+be seen.
+
+**Fix:** flipped `sdkconfig` to `CONFIG_XTAL_FREQ_26=y` / `CONFIG_XTAL_FREQ=26`
+(matching the measured hardware), rebuilt with `idf.py -D IDF_TARGET=esp32c2
+build` (ESP-IDF v5.3.5 at `C:\esp\v5.3.5\esp-idf`), reflashed over COM6.
+
+**Result, verified two ways:**
+- On-device STA scan now reports `dc_wifi: scan done: 12 networks` — same
+  count as the dev machine's independent scan of the same environment.
+- **`DragonPWR_BBF9` is now visible over the air** (`netsh wlan show
+  networks`): 100% signal, `BSSID e8:6b:ea:95:bb:f9`, channel 1, matching
+  the softAP MAC printed in the boot log. This is the actual practical
+  test, not just a log reading.
+
+**Open oddity, not yet explained:** the console UART still only reads
+cleanly at 74880, not 115200, even after the `CONFIG_XTAL_FREQ` fix — so
+whatever governs this specific UART's clock source doesn't fully track
+that Kconfig setting the way the Wi-Fi radio's frequency synthesis
+apparently does. Harmless for now (just remember to open the monitor at
+74880 on this unit), but worth understanding before assuming any other
+clock-sensitive peripheral is unaffected.
+
+**Housekeeping:** `docs/ROADMAP.md`'s softAP-adjacent Phase 1 notes should
+get a line about the 26MHz crystal once someone reconfirms this is
+consistent (not a one-off bad reading) — worth checking whether BTT's
+other Panda PWR units are also 26MHz-crystal parts or if this is
+unit-specific.
+
+## Next session, in order
+
+1. Connect to `DragonPWR_BBF9` (WPA2-Personal — password not on file here)
+   and confirm the captive portal actually loads at `192.168.4.1`.
+2. Bench-confirm GPIO18/USB1 live over the API — `POST
+   http://192.168.4.1/set` with body `usb=1` / `usb=0` (stock-compatible
+   route) or `POST /api/v2/command` with `{"output":"usb1","on":true}` —
+   while physically watching the port. Do the same for `power=1`/`power=0`
+   on the mains relay for a second, deliberate confirmation (not just the
+   incidental boot-time click from 09-09).
+3. Remaining Phase 0 items after that: relay latching-vs-momentary
+   (unresolvable without watching it under repeated toggling), GPIO6's
+   physical identity, whether the stock web UI's OTA accepts a foreign
+   image. Metering-IC photo stays blocked — the case can't be opened
+   non-destructively on this unit.
+4. Figure out the 74880-vs-115200 UART anomaly above if it becomes
+   annoying enough to matter, or if a future clock-sensitive bug shows up
+   that this might also explain.
+
+## 2026-09-09 — first hardware session
 
 ## What's confirmed
 
