@@ -117,18 +117,41 @@ an audible relay click, one click per press (not two, so the 60 ms debounce
 in `dp_button` is doing its job against contact bounce), toggling mains
 through the same `dp_relay_set()` path the HTTP API uses.
 
-Not yet exercised this session: GPIO6 (the maintained-contact toggle input),
-and the control-token gate itself (`POST /api/v2/token` + confirming
-`/api/v2/command` actually 403s without the header and passes with it).
+**Control-token gate, confirmed end to end.** `POST /api/v2/token` set a
+throwaway token (using the `web` sentinel header, since no token was
+configured yet — presence-only tier, exactly as designed); `/api/v2/command`
+then 403'd with no header, 403'd with a wrong token, and succeeded with the
+right one (toggled `usb1` on, confirmed via `/api/v2/state`). Also caught,
+by accident, a good negative test: a follow-up run of the relay-toggle script
+below forgot the header entirely and every one of its 10 requests 403'd
+cleanly rather than silently doing nothing or crashing. Cleaned up after:
+`usb1` back off, token cleared, device left open again.
+
+**Relay latching vs. momentary — resolved, without opening the case.** 5
+on/off cycles driven over `/api/v2/command`, 1.5 s apart (10 toggles total,
+`mains` empty of any real load — confirmed empty first). Clicks were heard
+at the same ~1.5 s cadence the commands were sent at, not ~3 s, meaning both
+the on-edge and the off-edge clicked, not just one direction. That is the
+signature of a standard, continuously-driven relay (needs coil current held
+to stay closed) rather than a latching/bistable one (which would pulse once
+per direction change and stay silent while held). Caveat: this was ear-timed
+against the known 1.5 s send interval, not an independent count of 10
+distinct clicks, so treat it as high-confidence rather than absolute.
+
+Not yet exercised this session: GPIO6 (the maintained-contact toggle input) —
+and per the user, not testable at all without opening the case, which isn't
+happening non-destructively on this unit. Left as a documented unknown
+rather than chased further.
 
 ## Next session, in order
 
-1. GPIO6 toggle input and the control-token gate (see directly above) - both
-   coded and flashed, neither physically exercised yet.
-2. Relay latching-vs-momentary (unresolvable without watching it under
-   repeated toggling), GPIO6's physical identity, whether the stock web
-   UI's OTA accepts a foreign image. Metering-IC photo stays blocked — the
-   case can't be opened non-destructively on this unit.
+1. Whether the stock web UI's OTA accepts a foreign image; if it validates
+   the project name, first install needs serial. The last Phase 0 item that
+   doesn't need the case open.
+2. GPIO6's physical identity and the metering IC photo both stay blocked —
+   neither is reachable without opening the case, which isn't happening
+   non-destructively on this unit. Documented as permanent unknowns unless
+   that changes.
 3. Figure out the 74880-vs-115200 UART anomaly above if it becomes
    annoying enough to matter, or if a future clock-sensitive bug shows up
    that this might also explain.

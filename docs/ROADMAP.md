@@ -89,7 +89,12 @@ stock binary and has never been checked against a board.
       manual documents only the Bind button and no photo shows a second control,
       so what drives this pin is genuinely unknown
 - [ ] Photograph the metering IC and match it against the register map
-- [ ] Determine whether the relay is latching or momentary
+- [x] Determine whether the relay is latching or momentary — 5 on/off cycles
+      driven 1.5 s apart over `/api/v2/command`; clicks landed at that same
+      ~1.5 s cadence (not ~3 s), i.e. **both** the on and the off edge
+      clicked, not just one. Consistent with a standard, continuously-driven
+      relay, not a latching/bistable one. Ear-timed, not click-counted — see
+      docs/BENCH_NOTES.md for the caveat
 - [ ] Check whether the stock web UI's OTA accepts a foreign image; if it
       validates the project name, first install needs serial
 
