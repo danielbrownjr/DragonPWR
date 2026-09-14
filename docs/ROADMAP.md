@@ -95,8 +95,14 @@ stock binary and has never been checked against a board.
       clicked, not just one. Consistent with a standard, continuously-driven
       relay, not a latching/bistable one. Ear-timed, not click-counted — see
       docs/BENCH_NOTES.md for the caveat
-- [ ] Check whether the stock web UI's OTA accepts a foreign image; if it
-      validates the project name, first install needs serial
+- [x] Check whether the stock web UI's OTA accepts a foreign image — moot:
+      stock has **no local update surface to test in the first place**. No
+      upload-shaped HTTP route exists anywhere in the app0 image (only `/set`
+      and `/update_ele_data`), and restoring the verified stock backup
+      produced no reachable AP even with NVS wiped — stock apparently has no
+      AP-provisioning fallback the way `dc_wifi` does. First install needs
+      serial; that was never a DragonPWR limitation to begin with. See
+      docs/BENCH_NOTES.md
 
 The first relay test must happen with the mains side disconnected.
 
@@ -111,10 +117,14 @@ browser."
       `gpio_get_level` the way stock does
 - [x] Power-loss restore policy — off / on / last state, persisted to NVS,
       defaulting to **off**
-- [x] `dp_button` on GPIO10, and the GPIO6 maintained-contact input — both
-      drive `dp_relay_set()` directly, so the Phase 2 interlock protects them
-      too once it lands there. GPIO10 confirmed physically (audible relay
-      click, one per press); GPIO6 not yet exercised (docs/BENCH_NOTES.md)
+- [x] `dp_button` on GPIO10 (confirmed physically: audible relay click, one
+      per press) drives `dp_relay_set()` directly, so the Phase 2 interlock
+      protects it too once it lands there. GPIO6 is polled and its
+      transitions are logged, but deliberately **not** wired to the relay —
+      no pull resistor plus unconfirmed physical identity means a floating
+      pin can produce a spurious "transition," and a bench session caught
+      exactly that: mains switched on with nobody touching anything. See
+      docs/BENCH_NOTES.md
 - [x] Wi-Fi, captive portal, mDNS, OTA, factory reset — all inherited from
       `dc_wifi` + `dc_portal`
 - [x] `/api/v2/info` + `/api/v2/state` + `/api/v2/command`

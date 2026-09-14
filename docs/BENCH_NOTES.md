@@ -143,15 +143,54 @@ and per the user, not testable at all without opening the case, which isn't
 happening non-destructively on this unit. Left as a documented unknown
 rather than chased further.
 
+**Stock web UI's OTA — resolved: there isn't one to test.** Scanned the
+app0 partition extracted straight from the verified `stock-panda-pwr-backup.bin`
+for anything upload-shaped; found only `/set` and `/update_ele_data`, both
+already-known status/control routes, no distinct OTA route. To confirm
+directly rather than trust an absence-of-evidence read: restored the full
+stock backup (`esptool write_flash 0x0 stock-panda-pwr-backup.bin`, the
+documented README recovery procedure). Wi-Fi scans afterward showed no
+device AP at all - it apparently tried to join its previously-saved home
+network, which isn't in range at this location. Erased its NVS
+(`erase_region 0x9000 0x5000`, same move that fixed DragonPWR's own softAP
+issue) to force a clean-credentials state and rescanned: still no AP of any
+kind. So stock has no AP-provisioning fallback the way `dc_wifi` does - it
+either updates over the (unreachable, home-network-only) LAN, over BTT's
+cloud, or exclusively via the serial recovery tool. Either way, there is no
+local web UI reachable to even attempt a foreign-image upload against.
+Incidental finding along the way: stock's own console UART shows the same
+scaled-baud symptom DragonPWR hit before the `CONFIG_XTAL_FREQ` fix - the ROM
+banner only decoded cleanly at 74880, and nothing further came through at
+either 74880 or 115200 in a 30 s window. Consistent with BTT shipping the
+same 40MHz-assumed-crystal mismatch; not chased further since it's not
+DragonPWR's bug to fix.
+
+Reflashed DragonPWR back on (`idf.py -p COM6 flash`) once the above was
+settled.
+
+**Real incident, caught in the course of the above: mains switched on with
+nobody touching anything.** After the reflash, `/api/v2/state` read
+`"mains":true` despite `restore:"off"` — which should force it off at every
+boot — and several minutes having passed (Wi-Fi scanning, reconnecting)
+since. Turned it off immediately via the API. Root cause: GPIO6 has no pull
+resistor (matching stock, since it's meant to be externally driven), its
+physical identity is still unconfirmed, and `dp_button`'s GPIO6 handling
+acted on *any* stable transition by toggling mains — exactly the kind of
+event a floating, unconnected pin produces on its own given enough idle
+time. Fixed in `dp_button.c`: GPIO6 transitions are now logged (useful
+forensic data for eventually identifying it) but no longer drive the relay.
+Rebuilt (768 K, still 40% free), reflashed, confirmed `mains:false` on the
+fixed image. Nothing was plugged into the outlet at any point during this,
+confirmed before the original relay-toggle test — so the practical
+consequence was zero, but the design gap was real and is now closed.
+
 ## Next session, in order
 
-1. Whether the stock web UI's OTA accepts a foreign image; if it validates
-   the project name, first install needs serial. The last Phase 0 item that
-   doesn't need the case open.
-2. GPIO6's physical identity and the metering IC photo both stay blocked —
+1. GPIO6's physical identity and the metering IC photo both stay blocked —
    neither is reachable without opening the case, which isn't happening
    non-destructively on this unit. Documented as permanent unknowns unless
-   that changes.
+   that changes. `dp_button` no longer acts on GPIO6 either way, so this is
+   informational only now, not a safety gap waiting to be closed.
 3. Figure out the 74880-vs-115200 UART anomaly above if it becomes
    annoying enough to matter, or if a future clock-sensitive bug shows up
    that this might also explain.

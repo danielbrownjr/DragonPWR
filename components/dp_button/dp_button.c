@@ -86,9 +86,18 @@ static void poll_task(void *arg)
             toggle_ticks = 0;
         } else if (++toggle_ticks >= DP_BUTTON_DEBOUNCE_TICKS && toggle_stable != toggle_candidate) {
             toggle_stable = toggle_candidate;
-            // Maintained-contact switch: invert on every stable transition,
-            // in either direction, matching stock's handling.
-            toggle_mains("toggle");
+            // Logged, not acted on. GPIO6 has no pull resistor - matching
+            // stock, since it's meant to be externally driven - and its
+            // physical identity is still unconfirmed (docs/ROADMAP.md Phase
+            // 0). A floating, unconnected pin drifts and produces exactly
+            // this kind of "stable" transition on its own; a bench session
+            // on 2026-09-14 caught mains switched on with nobody having
+            // touched anything, most likely from this. Wiring an unconfirmed,
+            // possibly-floating input to live mains power isn't acceptable -
+            // re-enable toggle_mains() here once GPIO6 is confirmed to be a
+            // real, deliberately-driven control.
+            ESP_LOGI(TAG, "toggle input transition seen (level=%d) - not acted on, "
+                          "GPIO6 identity unconfirmed", toggle_stable);
         }
     }
 }
