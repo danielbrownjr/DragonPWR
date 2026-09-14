@@ -74,8 +74,11 @@ usable without it.
 Everything in [HARDWARE_ANALYSIS.md](HARDWARE_ANALYSIS.md) is derived from the
 stock binary and has never been checked against a board.
 
-- [ ] Back up the stock flash over USB **before anything else** — BTT publishes
-      the app images but not a full flash dump, so this is the only way back
+- [x] Back up the stock flash over USB **before anything else** — BTT publishes
+      the app images but not a full flash dump, so this is the only way back.
+      Verified restorable: `app0`/`app1` both read as `panda_pwr 08a40b2-dirty`,
+      IDF v5.1.1-dirty, built Jan 13 2025 — matches the build already analysed
+      in HARDWARE_ANALYSIS.md
 - [ ] Confirm GPIO7 drives the relay, and that it is active **low**
 - [ ] Confirm GPIO18 switches USB1, active high
 - [ ] Identify GPIO6 physically. The handling is edge-triggered-toggle, but the
