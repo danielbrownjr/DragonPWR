@@ -51,22 +51,25 @@ consistent (not a one-off bad reading) — worth checking whether BTT's
 other Panda PWR units are also 26MHz-crystal parts or if this is
 unit-specific.
 
+**GPIO18/USB1 and the mains relay, confirmed live over the API.** Connected
+to `DragonPWR_BBF9` (password `987654321`, the `dc_wifi` component default —
+never changed by this firmware). `GET /api/v2/state` first read
+`{"outputs":{"mains":false,"usb1":false},"restore":"off",...}`, matching the
+safe-boot state. Toggled both outputs via the stock-compatible route
+(`POST /set` with `usb=1`/`usb=0`, then `power=1`/`power=0` — PowerShell's
+`curl` alias needs `curl.exe` or `Invoke-RestMethod` explicitly, plain
+`curl -X POST ... -d ...` doesn't work under `Invoke-WebRequest`'s aliasing).
+Confirmed working end to end — this closes out GPIO7 (relay) and GPIO18
+(USB1) as fully confirmed, both by physical observation now, not just by
+safe-boot-time inference.
+
 ## Next session, in order
 
-1. Connect to `DragonPWR_BBF9` (WPA2-Personal — password not on file here)
-   and confirm the captive portal actually loads at `192.168.4.1`.
-2. Bench-confirm GPIO18/USB1 live over the API — `POST
-   http://192.168.4.1/set` with body `usb=1` / `usb=0` (stock-compatible
-   route) or `POST /api/v2/command` with `{"output":"usb1","on":true}` —
-   while physically watching the port. Do the same for `power=1`/`power=0`
-   on the mains relay for a second, deliberate confirmation (not just the
-   incidental boot-time click from 09-09).
-3. Remaining Phase 0 items after that: relay latching-vs-momentary
-   (unresolvable without watching it under repeated toggling), GPIO6's
-   physical identity, whether the stock web UI's OTA accepts a foreign
-   image. Metering-IC photo stays blocked — the case can't be opened
-   non-destructively on this unit.
-4. Figure out the 74880-vs-115200 UART anomaly above if it becomes
+1. Relay latching-vs-momentary (unresolvable without watching it under
+   repeated toggling), GPIO6's physical identity, whether the stock web
+   UI's OTA accepts a foreign image. Metering-IC photo stays blocked — the
+   case can't be opened non-destructively on this unit.
+2. Figure out the 74880-vs-115200 UART anomaly above if it becomes
    annoying enough to matter, or if a future clock-sensitive bug shows up
    that this might also explain.
 

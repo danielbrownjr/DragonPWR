@@ -79,8 +79,12 @@ stock binary and has never been checked against a board.
       Verified restorable: `app0`/`app1` both read as `panda_pwr 08a40b2-dirty`,
       IDF v5.1.1-dirty, built Jan 13 2025 — matches the build already analysed
       in HARDWARE_ANALYSIS.md
-- [ ] Confirm GPIO7 drives the relay, and that it is active **low**
-- [ ] Confirm GPIO18 switches USB1, active high
+- [x] Confirm GPIO7 drives the relay, and that it is active **low** —
+      physically confirmed twice: an audible click at safe-boot re-drive
+      (09-09), then a deliberate on/off toggle over `/set` (09-14). See
+      docs/BENCH_NOTES.md.
+- [x] Confirm GPIO18 switches USB1, active high — confirmed the same way,
+      deliberate on/off toggle over `/set` (09-14). See docs/BENCH_NOTES.md.
 - [ ] Identify GPIO6 physically. The handling is edge-triggered-toggle, but the
       manual documents only the Bind button and no photo shows a second control,
       so what drives this pin is genuinely unknown
