@@ -37,13 +37,51 @@ build` (ESP-IDF v5.3.5 at `C:\esp\v5.3.5\esp-idf`), reflashed over COM6.
   the softAP MAC printed in the boot log. This is the actual practical
   test, not just a log reading.
 
-**Open oddity, not yet explained:** the console UART still only reads
-cleanly at 74880, not 115200, even after the `CONFIG_XTAL_FREQ` fix — so
-whatever governs this specific UART's clock source doesn't fully track
-that Kconfig setting the way the Wi-Fi radio's frequency synthesis
-apparently does. Harmless for now (just remember to open the monitor at
-74880 on this unit), but worth understanding before assuming any other
-clock-sensitive peripheral is unaffected.
+**Console-UART baud mystery, resolved (separately from the crystal fix
+above).** The console still needed 74880 baud even after `CONFIG_XTAL_FREQ`
+was corrected to 26 — flipping that Kconfig setting fixed the Wi-Fi radio
+(verified above) but had zero measurable effect on the console's real baud,
+which stayed scaled by the identical 0.65× factor with the fix in place.
+That ruled out a Kconfig-propagation bug. Chased it much further than
+expected:
+
+- Confirmed the true crystal really is 26,000,000 Hz via
+  `esp_clk_tree_src_get_freq_hz(UART_SCLK_XTAL, EXACT, ...)` forcing a
+  fresh hardware calibration inside the running firmware — not just
+  trusting `esptool`'s or Kconfig's say-so.
+- Explicitly forced the UART's clock-source mux to XTAL
+  (`uart_ll_set_sclk`) and fed the divider that exact, freshly-measured
+  26,000,000 Hz value directly (`uart_ll_set_baudrate`) — still came out
+  scaled wrong. So it isn't a wrong-clock-source-selected bug either; the
+  divider math genuinely produces the wrong result even given a verified
+  input.
+- Found a build that reconfigured the baud correctly from `app_main()` via
+  the ordinary `uart_set_baudrate()` API and read cleanly end-to-end at
+  115200 (STA-connect to a real network included). Tried to reproduce that
+  exact recipe deterministically — same code, same reset method, repeated
+  8+ times — and it only worked once. Every placement tried (top of
+  `app_main`, end of `app_main`, with/without preceding delays, with/without
+  preceding `esp_clk_*()` calls) succeeded roughly 1 time in 8-10 resets and
+  otherwise reproduced the 74880 baud unchanged.
+- That erratic, "sometimes works, mostly doesn't, same code" signature
+  turned out to be a **known, Espressif-acknowledged hardware quirk**, not
+  a bug in this project or in ESP-IDF's Kconfig plumbing:
+  [espressif/esp-idf#2518](https://github.com/espressif/esp-idf/issues/2518).
+  A contributor there reproduced the identical symptom on a 26MHz-crystal
+  ESP32 (sporadic 74880-instead-of-115200 right after power-up), root-caused
+  it to the crystal oscillator's own startup transient rather than
+  software, applied the exact same `uart_set_baudrate(0, 115200)` mitigation
+  from `app_main()`, and confirmed it narrows the window but doesn't
+  guarantee it — matching everything observed here.
+
+**Fix shipped:** `main/app_main.c` calls `uart_set_baudrate()` for the
+console UART as the first thing `app_main()` does (the upstream-recommended
+placement and mitigation). It measurably improves the odds of getting a
+readable 115200 log but is **not guaranteed** — if a bench session's log
+looks like garbage, retry the reset once or twice, or just open the monitor
+at 74880 baud as a fallback. This is a hardware characteristic of this
+crystal, not something further software changes are expected to fully
+close out.
 
 **Housekeeping:** `docs/ROADMAP.md`'s softAP-adjacent Phase 1 notes should
 get a line about the 26MHz crystal once someone reconfirms this is
