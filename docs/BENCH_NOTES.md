@@ -101,13 +101,35 @@ Confirmed working end to end — this closes out GPIO7 (relay) and GPIO18
 (USB1) as fully confirmed, both by physical observation now, not just by
 safe-boot-time inference.
 
+**`dp_button` (GPIO10) and the control-token gate, flashed and bench-tested
+the same day they were written.** Built at commit `14748da` (768 K, 40 % of
+the app slot free), flashed over COM6 with no `--erase-flash` (NVS carried
+over from the softAP-fix session, so restore policy/AP config persisted as
+expected). Post-flash Wi-Fi reassociated three times in the first ~50 s
+(1:53:24-1:54:13, ~15-17 s apart in the Windows WLAN event log) before
+settling — read the boot-log baud quirk plus normal AP-driver settling as
+the likely cause; two 35-45 s serial-console and `netsh` polling windows
+after that showed a rock-solid 100 % signal connection and no reboot, so
+this wasn't chased further as a firmware bug.
+
+GPIO10: **confirmed physically** — every press of the front button produces
+an audible relay click, one click per press (not two, so the 60 ms debounce
+in `dp_button` is doing its job against contact bounce), toggling mains
+through the same `dp_relay_set()` path the HTTP API uses.
+
+Not yet exercised this session: GPIO6 (the maintained-contact toggle input),
+and the control-token gate itself (`POST /api/v2/token` + confirming
+`/api/v2/command` actually 403s without the header and passes with it).
+
 ## Next session, in order
 
-1. Relay latching-vs-momentary (unresolvable without watching it under
+1. GPIO6 toggle input and the control-token gate (see directly above) - both
+   coded and flashed, neither physically exercised yet.
+2. Relay latching-vs-momentary (unresolvable without watching it under
    repeated toggling), GPIO6's physical identity, whether the stock web
    UI's OTA accepts a foreign image. Metering-IC photo stays blocked — the
    case can't be opened non-destructively on this unit.
-2. Figure out the 74880-vs-115200 UART anomaly above if it becomes
+3. Figure out the 74880-vs-115200 UART anomaly above if it becomes
    annoying enough to matter, or if a future clock-sensitive bug shows up
    that this might also explain.
 

@@ -108,7 +108,8 @@ browser."
       defaulting to **off**
 - [x] `dp_button` on GPIO10, and the GPIO6 maintained-contact input — both
       drive `dp_relay_set()` directly, so the Phase 2 interlock protects them
-      too once it lands there. Built, not yet bench-confirmed (docs/BENCH_NOTES.md)
+      too once it lands there. GPIO10 confirmed physically (audible relay
+      click, one per press); GPIO6 not yet exercised (docs/BENCH_NOTES.md)
 - [x] Wi-Fi, captive portal, mDNS, OTA, factory reset — all inherited from
       `dc_wifi` + `dc_portal`
 - [x] `/api/v2/info` + `/api/v2/state` + `/api/v2/command`
