@@ -9,6 +9,7 @@
 #include "dc_evlog.h"
 #include "dc_wifi.h"
 #include "dp_board.h"
+#include "dp_button.h"
 #include "dp_portal.h"
 #include "dp_relay.h"
 #include "driver/uart.h"
@@ -83,6 +84,7 @@ void app_main(void)
     // as short as the firmware can make it, and nothing above depends on the
     // network being up.
     ESP_ERROR_CHECK(dp_relay_init());
+    ESP_ERROR_CHECK(dp_button_init());
 
     ESP_ERROR_CHECK(configure_network_identity());
     ESP_ERROR_CHECK(dc_wifi_start());

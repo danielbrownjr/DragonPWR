@@ -35,7 +35,7 @@ Flash, not ideas.
 | | |
 |---|---|
 | App slot (stock partition table) | **1280 K** |
-| **DragonPWR Phase 1, measured** | **778 K — 39 % of the slot free** |
+| **DragonPWR Phase 1, measured** | **768 K — 40 % of the slot free** |
 | DragonStatus v1.0.0 OTA image (ESP32-C3) | 1.15 MB |
 | DragonVent v0.5.9 OTA image (ESP32) | 1.20 MB |
 
@@ -106,7 +106,9 @@ browser."
       `gpio_get_level` the way stock does
 - [x] Power-loss restore policy — off / on / last state, persisted to NVS,
       defaulting to **off**
-- [ ] `dp_button` on GPIO10, and the GPIO6 maintained-contact input
+- [x] `dp_button` on GPIO10, and the GPIO6 maintained-contact input — both
+      drive `dp_relay_set()` directly, so the Phase 2 interlock protects them
+      too once it lands there. Built, not yet bench-confirmed (docs/BENCH_NOTES.md)
 - [x] Wi-Fi, captive portal, mDNS, OTA, factory reset — all inherited from
       `dc_wifi` + `dc_portal`
 - [x] `/api/v2/info` + `/api/v2/state` + `/api/v2/command`
@@ -115,8 +117,13 @@ browser."
       across the firmware swap
 - [x] Byte-identical partition table, verified against the stock binary, so install-over-stock stays possible
 - [x] Record the real image size and update the budget table above
-- [ ] `dp_portal`'s `authorize` is currently open — wire up the family control
-      token before this is exposed to anything but a trusted LAN
+- [x] `dp_portal`'s `authorize` now gates `/api/v2/command` and the new
+      `/api/v2/token` behind the family's `X-Dragon-Auth` / `X-DragonBreath-Auth`
+      control-token scheme (presence-only until a token is set, exact match
+      after). Stock-compatible `/set` stays open on purpose, for HA-Panda-PWR.
+      No dedicated dc_ui settings card yet (that surface is dragonbreath-only
+      today) — set/clear the token directly against `/api/v2/token` until one
+      lands
 
 No meter and no printer integration in this phase. The point is a device that
 is safe to leave plugged in.
