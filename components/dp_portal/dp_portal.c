@@ -74,12 +74,29 @@ static int recv_body(httpd_req_t *req, char *buf, size_t size)
 // POST cannot set custom headers, so requiring *some* value here defeats CSRF
 // even before a token is set; once one is set, only an exact match passes.
 //
-// Only DragonPWR's own /api/v2/* mutations are gated - the stock-compatible
-// /set route is deliberately left open so HA-Panda-PWR and other integrations
-// written against the stock (unauthenticated) API keep working unless the
-// owner opts into a token.
+// The stock-compatible /set route cannot use the presence tier - HA-Panda-PWR
+// and other clients written against the stock API send no header - so it has
+// its own gate, stock_authorize(), below.
 
 #define DP_NVS_TOKEN "ctrl_tok"
+#define DP_TOKEN_MAX 64
+
+// Printable ASCII with no spaces: the token travels in a header and httpd
+// trims surrounding whitespace, so a token with spaces could never match
+// itself - and clearing it needs a match, so it would lock the owner out.
+static bool token_valid(const char *token)
+{
+    const size_t len = strlen(token);
+    if (len == 0 || len > DP_TOKEN_MAX) {
+        return false;
+    }
+    for (size_t i = 0; i < len; i++) {
+        if (token[i] < 0x21 || token[i] > 0x7e) {
+            return false;
+        }
+    }
+    return true;
+}
 
 static esp_err_t token_store(const char *token)
 {
@@ -103,22 +120,62 @@ static esp_err_t token_store(const char *token)
     return err;
 }
 
-// Returns the stored token's length, or 0 (out left empty) if none is set.
-static size_t token_load(char *out, size_t out_size)
+// ESP_OK with out empty when no token is set. Any other failure - a read
+// error, or a stored value token_store could not have written - is returned
+// as an error so authorize() fails closed: treating it as "no token" would
+// silently drop the lock the owner set.
+static esp_err_t token_load(char *out, size_t out_size)
 {
+    out[0] = '\0';
     nvs_handle_t handle;
-    if (nvs_open(DP_NVS_NAMESPACE, NVS_READONLY, &handle) != ESP_OK) {
-        out[0] = '\0';
-        return 0;
+    esp_err_t err = nvs_open(DP_NVS_NAMESPACE, NVS_READONLY, &handle);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        return ESP_OK;   // namespace not created yet
+    }
+    if (err != ESP_OK) {
+        return err;
     }
     size_t len = out_size;
-    esp_err_t err = nvs_get_str(handle, DP_NVS_TOKEN, out, &len);
+    err = nvs_get_str(handle, DP_NVS_TOKEN, out, &len);
     nvs_close(handle);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        out[0] = '\0';
+        return ESP_OK;
+    }
+    if (err == ESP_OK && !token_valid(out)) {
+        err = ESP_ERR_INVALID_STATE;
+    }
     if (err != ESP_OK) {
         out[0] = '\0';
-        return 0;
     }
-    return strlen(out);
+    return err;
+}
+
+// Compares every byte of the stored token whatever the input, so response
+// time does not leak how long a matching prefix was.
+static bool token_matches(const char *given, const char *stored)
+{
+    const size_t want_len = strlen(stored);
+    const size_t given_len = strnlen(given, DP_TOKEN_MAX + 1);
+    unsigned diff = want_len ^ given_len;
+    for (size_t i = 0; i < want_len; i++) {
+        const char g = i < given_len ? given[i] : 0;
+        diff |= (unsigned char)(stored[i] ^ g);
+    }
+    return diff == 0;
+}
+
+// Loads the token for a gate. Returns false when it cannot be read, in which
+// case nothing may pass. The way out is erasing NVS over serial (README).
+static bool token_read(char *out, size_t out_size)
+{
+    const esp_err_t err = token_load(out, out_size);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "control token unreadable (%s); refusing commands",
+                 esp_err_to_name(err));
+        return false;
+    }
+    return true;
 }
 
 static bool auth_header(httpd_req_t *req, char *out, size_t out_size)
@@ -130,15 +187,58 @@ static bool auth_header(httpd_req_t *req, char *out, size_t out_size)
 static bool authorize(httpd_req_t *req, void *ctx)
 {
     (void)ctx;
-    char header[65] = {0};
+    char header[DP_TOKEN_MAX + 1] = {0};
     if (!auth_header(req, header, sizeof(header))) {
         return false;
     }
-    char stored[65] = {0};
-    if (token_load(stored, sizeof(stored)) == 0) {
+    char stored[DP_TOKEN_MAX + 1] = {0};
+    if (!token_read(stored, sizeof(stored))) {
+        return false;
+    }
+    if (stored[0] == '\0') {
         return true;   // presence-only tier: no token configured yet
     }
-    return strcmp(header, stored) == 0;
+    return token_matches(header, stored);
+}
+
+// "http://host[:port]" -> "host[:port]", or NULL if it is not an http(s) origin.
+static const char *origin_host(const char *origin)
+{
+    if (strncmp(origin, "http://", 7) == 0) {
+        return origin + 7;
+    }
+    if (strncmp(origin, "https://", 8) == 0) {
+        return origin + 8;
+    }
+    return NULL;
+}
+
+// Gate for the stock /set route. Stock clients send no auth header and cannot
+// be taught to, so with no token configured the CSRF gate is an Origin check
+// instead: a browser always sends Origin on a cross-origin POST, and the stock
+// clients never do. Once a token is configured /set needs it like any other
+// command - otherwise the token would protect everything except the route that
+// switches mains. Stock clients stop working then, which the owner opted into.
+static bool stock_authorize(httpd_req_t *req)
+{
+    if (authorize(req, NULL)) {
+        return true;
+    }
+    char stored[DP_TOKEN_MAX + 1] = {0};
+    if (!token_read(stored, sizeof(stored)) || stored[0] != '\0') {
+        return false;
+    }
+    if (httpd_req_get_hdr_value_len(req, "Origin") == 0) {
+        return true;
+    }
+    char origin[128];
+    char host[64];
+    if (httpd_req_get_hdr_value_str(req, "Origin", origin, sizeof(origin)) != ESP_OK ||
+        httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host)) != ESP_OK) {
+        return false;
+    }
+    const char *from = origin_host(origin);
+    return from && strcmp(from, host) == 0;
 }
 
 // ------------------------------------------------------------ product API
@@ -243,6 +343,9 @@ static bool form_flag(const char *body, const char *key, bool *out)
 
 static esp_err_t stock_set_post(httpd_req_t *req)
 {
+    if (!stock_authorize(req)) {
+        return send_error(req, "403 Forbidden", "authorization required");
+    }
     char body[128];
     if (recv_body(req, body, sizeof(body)) < 0) {
         return send_error(req, "400 Bad Request", "body required");
@@ -295,10 +398,12 @@ static esp_err_t token_post(httpd_req_t *req)
         return send_error(req, "400 Bad Request", "invalid JSON");
     }
     const cJSON *token = cJSON_GetObjectItemCaseSensitive(root, "token");
-    if (!cJSON_IsString(token) || strlen(token->valuestring) > 64) {
+    if (!cJSON_IsString(token) ||
+        (token->valuestring[0] != '\0' && !token_valid(token->valuestring))) {
         cJSON_Delete(root);
         return send_error(req, "400 Bad Request",
-                          "token (string, <=64 chars; empty clears it) is required");
+                          "token (1-64 printable characters, no spaces; empty "
+                          "clears it) is required");
     }
     esp_err_t err = token_store(token->valuestring);
     const bool token_set = token->valuestring[0] != '\0';
@@ -306,6 +411,7 @@ static esp_err_t token_post(httpd_req_t *req)
     if (err != ESP_OK) {
         return send_error(req, "500 Internal Server Error", esp_err_to_name(err));
     }
+    dc_evlog_add(token_set ? "control token set" : "control token cleared");
     cJSON *reply = cJSON_CreateObject();
     cJSON_AddBoolToObject(reply, "ok", true);
     cJSON_AddBoolToObject(reply, "token_set", token_set);

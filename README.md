@@ -98,6 +98,44 @@ The current Phase 1 image is 778 K against a 1280 K app slot. `dependencies.lock
 is committed: `dragon-core` is pinned by tag and the lock is what makes that
 reproducible.
 
+The lock's hashes are of an **LF** checkout. The component manager clones
+`dragon-core` with your global git settings and does not normalise line endings,
+so with `core.autocrlf=true` (the Git for Windows default) the fetch fails with
+*"The downloaded component "dc_evlog" is corrupted"*. Turn it off in the build
+shell, after `export.ps1`, then delete `managed_components/` and build again:
+
+```powershell
+$env:GIT_CONFIG_COUNT=1; $env:GIT_CONFIG_KEY_0="core.autocrlf"; $env:GIT_CONFIG_VALUE_0="false"
+```
+
+If it still fails, the component manager's cache holds a CRLF checkout from an
+earlier fetch; clear it too.
+
+## Control token
+
+Out of the box, commands are open to anything on the LAN that sends an
+`X-Dragon-Auth` header with any value. That blocks cross-site requests from a
+web page, but it is not a password: anything on the network that means to can
+still switch the outlet.
+
+To lock it down:
+
+```
+curl -X POST http://<device>/api/v2/token -H 'X-Dragon-Auth: web' \
+     -H 'Content-Type: application/json' -d '{"token":"<1-64 chars, no spaces>"}'
+```
+
+After that every command, OTA and factory reset needs `X-Dragon-Auth: <token>`,
+and so does stock `/set`. `/api/v2/info`, `/api/v2/state` and `/update_ele_data`
+stay readable. Clear it by posting `{"token":""}` with the current token.
+
+- **HA-Panda-PWR stops switching the outlet** once a token is set. It speaks the
+  stock API and cannot send the header. Readback keeps working. Before a token
+  is set, `/set` accepts it but refuses browsers posting from another site.
+- **A forgotten or unreadable token can only be cleared by erasing NVS over
+  serial**, which also forgets Wi-Fi:
+  `python -m esptool --chip esp32c2 -p COM6 erase_region 0x9000 0x5000`
+
 ## Layout
 
 | Path | |
