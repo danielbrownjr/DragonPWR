@@ -143,6 +143,31 @@ stay readable. Clear it by posting `{"token":""}` with the current token.
   serial**, which also forgets Wi-Fi:
   `python -m esptool --chip esp32c2 -p COM6 erase_region 0x9000 0x5000`
 
+## Printer source
+
+DragonPWR can follow one printer, picked in **Settings > Device setup > Printer**
+and applied after a restart:
+
+| | |
+|---|---|
+| **None - plug only** | The default. No printer connection. |
+| **Klipper (Moonraker)** | Moonraker's websocket, plain HTTP. Moonraker must trust the plug's IP (`[authorization] trusted_clients`). |
+| **Bambu Lab (experimental)** | LAN-mode MQTT over TLS, read-only. Its TLS session needs more memory than this chip reliably has spare; the plug refuses to start it when the heap is too low and says so on `/power`. |
+
+Today the source is reported, not acted on: `/power` and `/api/v2/state` show the
+printer's state and temperatures. The mid-print interlock comes next.
+
+To try the Klipper source without a printer, run the fake Moonraker on any
+machine on the LAN and point the plug at it:
+
+```
+pip install websockets
+python tools/fake_moonraker.py
+```
+
+Type `print`, `pause`, `bed 60`, `shutdown` and so on to drive it; the commands
+are listed at the top of the file.
+
 ## Layout
 
 | Path | |
@@ -150,7 +175,9 @@ stay readable. Clear it by posting `{"token":""}` with the current token.
 | `main/` | `app_main` — brings the outputs up, then hands off to dragon-core |
 | `components/dp_board/` | The pin map, and the only place polarity is written down |
 | `components/dp_relay/` | Mains + USB1 outputs, safe boot state, restore policy |
-| `components/dp_portal/` | Product API v2, stock-compatible routes, safety guards |
+| `components/dp_portal/` | Product API v2, stock-compatible routes, safety guards, `/power` |
+| `components/dp_printer/` | Printer source selection (none / Moonraker / Bambu) and one status for all |
+| `tools/` | `fake_moonraker.py`, for testing the Klipper source without a printer |
 | `analysis/` | Static-analysis tooling for the stock firmware, and the backup verifier |
 
 ## Documentation

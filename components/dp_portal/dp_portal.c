@@ -1,15 +1,20 @@
 // SPDX-License-Identifier: MIT
 #include "dp_portal.h"
 
+#include <ctype.h>
 #include <inttypes.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "cJSON.h"
+#include "dc_bambu.h"
 #include "dc_evlog.h"
+#include "dc_moonraker.h"
 #include "dc_portal.h"
 #include "dc_wifi.h"
+#include "dp_printer.h"
 #include "dp_relay.h"
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
@@ -297,6 +302,16 @@ static esp_err_t info_get(httpd_req_t *req)
     return send_json(req, root);
 }
 
+// NaN (not reported) goes out as null; JSON has no NaN.
+static void add_temp(cJSON *obj, const char *key, float value)
+{
+    if (isfinite(value)) {
+        cJSON_AddNumberToObject(obj, key, value);
+    } else {
+        cJSON_AddNullToObject(obj, key);
+    }
+}
+
 static esp_err_t state_get(httpd_req_t *req)
 {
     cJSON *root = cJSON_CreateObject();
@@ -305,10 +320,28 @@ static esp_err_t state_get(httpd_req_t *req)
     cJSON_AddBoolToObject(outputs, "usb1", dp_relay_get(DP_OUTPUT_USB1));
     cJSON_AddStringToObject(root, "restore",
                             dp_restore_to_str(dp_relay_get_restore()));
-    // No meter and no printer source yet; both are declared null rather than
-    // zeroed so a client can tell "not implemented" from "measured zero".
+    // No meter yet: null rather than zeros, so a client can tell "not
+    // implemented" from "measured zero". The printer is null in plug-only mode.
     cJSON_AddNullToObject(root, "meter");
-    cJSON_AddNullToObject(root, "printer");
+    dp_printer_status_t pr;
+    dp_printer_get_status(&pr);
+    if (pr.source == DP_SOURCE_LITE) {
+        cJSON_AddNullToObject(root, "printer");
+    } else {
+        cJSON *printer = cJSON_AddObjectToObject(root, "printer");
+        cJSON_AddStringToObject(printer, "source", dp_source_to_str(pr.source));
+        cJSON_AddStringToObject(printer, "link", pr.link);
+        cJSON_AddBoolToObject(printer, "connected", pr.connected);
+        cJSON_AddStringToObject(printer, "state", pr.state);
+        add_temp(printer, "bed", pr.bed);
+        add_temp(printer, "bed_target", pr.bed_target);
+        add_temp(printer, "nozzle", pr.nozzle);
+        add_temp(printer, "progress", pr.progress);
+        cJSON_AddStringToObject(printer, "filename", pr.filename);
+        if (pr.note[0]) {
+            cJSON_AddStringToObject(printer, "note", pr.note);
+        }
+    }
 
     // Headroom for whatever comes next - a TLS printer client is the obvious
     // candidate. largest_block matters as much as free: mbedTLS wants
@@ -503,60 +536,282 @@ static esp_err_t token_post(httpd_req_t *req)
 
 // ------------------------------------------------------ dc_portal callbacks
 
+static cJSON *add_section(cJSON *sections, const char *title, const char *description)
+{
+    cJSON *section = cJSON_CreateObject();
+    cJSON_AddStringToObject(section, "title", title);
+    if (description) {
+        cJSON_AddStringToObject(section, "description", description);
+    }
+    cJSON_AddItemToArray(sections, section);
+    return section;
+}
+
+static cJSON *add_field(cJSON *section, const char *key, const char *label,
+                        const char *type, const char *hint)
+{
+    cJSON *fields = cJSON_GetObjectItemCaseSensitive(section, "fields");
+    if (!fields) {
+        fields = cJSON_AddArrayToObject(section, "fields");
+    }
+    cJSON *field = cJSON_CreateObject();
+    cJSON_AddStringToObject(field, "key", key);
+    cJSON_AddStringToObject(field, "label", label);
+    cJSON_AddStringToObject(field, "type", type);
+    if (hint) {
+        cJSON_AddStringToObject(field, "hint", hint);
+    }
+    cJSON_AddItemToArray(fields, field);
+    return field;
+}
+
+static void add_option(cJSON *field, const char *value, const char *label)
+{
+    cJSON *options = cJSON_GetObjectItemCaseSensitive(field, "options");
+    if (!options) {
+        options = cJSON_AddArrayToObject(field, "options");
+    }
+    cJSON *option = cJSON_CreateObject();
+    cJSON_AddStringToObject(option, "value", value);
+    cJSON_AddStringToObject(option, "label", label);
+    cJSON_AddItemToArray(options, option);
+}
+
+// dc_ui shows a section with visible_when only while that field holds value.
+static void show_when_source(cJSON *section, const char *source)
+{
+    cJSON *when = cJSON_AddObjectToObject(section, "visible_when");
+    cJSON_AddStringToObject(when, "field", "source");
+    cJSON_AddStringToObject(when, "value", source);
+}
+
+// Secrets are never sent back to the browser. The field reads blank, and a
+// blank on save keeps what is stored (see apply_product).
+static void add_secret(cJSON *section, const char *key, const char *label,
+                       bool stored, const char *hint)
+{
+    cJSON *field = add_field(section, key, label, "text", hint);
+    cJSON_AddBoolToObject(field, "secret", true);
+    cJSON_AddStringToObject(field, "value", "");
+    cJSON_AddStringToObject(field, "placeholder",
+                            stored ? "Saved - leave blank to keep" : "");
+}
+
+static const char *source_label(dp_source_t source)
+{
+    switch (source) {
+    case DP_SOURCE_MOONRAKER: return "Klipper (Moonraker)";
+    case DP_SOURCE_BAMBU:     return "Bambu Lab";
+    default:                  return "no printer";
+    }
+}
+
 static cJSON *describe_product(void *ctx)
 {
     (void)ctx;
     cJSON *root = cJSON_CreateObject();
     cJSON *sections = cJSON_AddArrayToObject(root, "sections");
 
-    cJSON *section = cJSON_CreateObject();
-    cJSON_AddStringToObject(section, "title", "Power");
-    cJSON_AddStringToObject(section, "description",
-                            "What the outlet does when mains power returns.");
-    cJSON *fields = cJSON_AddArrayToObject(section, "fields");
-
-    cJSON *field = cJSON_CreateObject();
-    cJSON_AddStringToObject(field, "key", "restore");
-    cJSON_AddStringToObject(field, "label", "After a power cut");
-    cJSON_AddStringToObject(field, "type", "select");
+    cJSON *power = add_section(sections, "Power",
+                               "What the outlet does when mains power returns.");
+    cJSON *field = add_field(power, "restore", "After a power cut", "select",
+                             "Off is the safe default: the outlet stays off until "
+                             "something asks for it.");
     cJSON_AddStringToObject(field, "value", dp_restore_to_str(dp_relay_get_restore()));
-    cJSON_AddStringToObject(field, "hint",
-                            "Off is the safe default: the outlet stays off until "
-                            "something asks for it.");
-    cJSON *options = cJSON_AddArrayToObject(field, "options");
-    static const char *const VALUES[] = { "off", "on", "last" };
-    static const char *const LABELS[] = { "Stay off", "Switch on", "Restore last state" };
-    for (int i = 0; i < 3; i++) {
-        cJSON *option = cJSON_CreateObject();
-        cJSON_AddStringToObject(option, "value", VALUES[i]);
-        cJSON_AddStringToObject(option, "label", LABELS[i]);
-        cJSON_AddItemToArray(options, option);
+    add_option(field, "off", "Stay off");
+    add_option(field, "on", "Switch on");
+    add_option(field, "last", "Restore last state");
+
+    // Which printer, if any, the plug follows - and what is running right now,
+    // which differs from the saved choice until the next restart.
+    dp_printer_status_t st;
+    dp_printer_get_status(&st);
+    const dp_source_t saved = dp_printer_saved_source();
+    char now[160];
+    if (st.source == DP_SOURCE_LITE) {
+        snprintf(now, sizeof(now), "Running now: plug only.");
+    } else {
+        snprintf(now, sizeof(now), "Running now: %s, %s%s%s.",
+                 source_label(st.source), st.link,
+                 st.note[0] ? " - " : "", st.note);
     }
-    cJSON_AddItemToArray(fields, field);
-    cJSON_AddItemToArray(sections, section);
+    if (saved != st.source) {
+        const size_t len = strlen(now);
+        snprintf(now + len, sizeof(now) - len, " Saved: %s - restart to switch.",
+                 source_label(saved));
+    }
+    cJSON *printer = add_section(sections, "Printer", now);
+    field = add_field(printer, "source", "Printer to follow", "select",
+                      "Takes effect after a restart. Bambu is experimental: its "
+                      "encrypted connection needs more memory than this chip "
+                      "reliably has spare.");
+    cJSON_AddStringToObject(field, "value", dp_source_to_str(saved));
+    add_option(field, "lite", "None - plug only");
+    add_option(field, "moonraker", "Klipper (Moonraker)");
+    add_option(field, "bambu", "Bambu Lab (experimental)");
+
+    dc_moonraker_config_t mk = { 0 };
+    dc_moonraker_get_config(&mk);
+    // dc_moonraker stores an API key but never sends one, so no field for it:
+    // Moonraker has to trust this plug's address instead.
+    cJSON *moonraker = add_section(sections, "Moonraker",
+                                   "The Klipper printer's Moonraker server. It "
+                                   "must trust this plug's IP address "
+                                   "([authorization] trusted_clients).");
+    show_when_source(moonraker, "moonraker");
+    field = add_field(moonraker, "mk_host", "Host", "text",
+                      "IP address or hostname, e.g. 192.168.1.50");
+    cJSON_AddStringToObject(field, "value", mk.host);
+    field = add_field(moonraker, "mk_port", "Port", "number", "Usually 7125.");
+    cJSON_AddNumberToObject(field, "value", mk.port ? mk.port : 7125);
+    cJSON_AddNumberToObject(field, "min", 1);
+    cJSON_AddNumberToObject(field, "max", 65535);
+
+    dc_bambu_config_t bb = { 0 };
+    dc_bambu_get_config(&bb);
+    cJSON *bambu = add_section(sections, "Bambu Lab",
+                               "The printer must be in LAN mode. Read-only: "
+                               "DragonPWR never sends the printer commands. "
+                               "Saved settings apply after a restart.");
+    show_when_source(bambu, "bambu");
+    field = add_field(bambu, "bb_host", "Printer IP", "text", NULL);
+    cJSON_AddStringToObject(field, "value", bb.host);
+    field = add_field(bambu, "bb_serial", "Serial number", "text",
+                      "On the printer's screen, or in Bambu Studio.");
+    cJSON_AddStringToObject(field, "value", bb.serial);
+    add_secret(bambu, "bb_code", "LAN access code", bb.code[0] != '\0',
+               "On the printer's screen under LAN mode.");
     return root;
+}
+
+static void append_message(char *message, size_t size, const char *text)
+{
+    const size_t len = strlen(message);
+    if (len + 2 < size) {
+        snprintf(message + len, size - len, "%s%s", len ? "; " : "", text);
+    }
+}
+
+// Host names and IPs only: no scheme, no spaces, no path.
+static bool host_valid(const char *host, size_t max)
+{
+    const size_t len = strlen(host);
+    if (len == 0 || len >= max) {
+        return false;
+    }
+    for (size_t i = 0; i < len; i++) {
+        const char c = host[i];
+        if (!(isalnum((unsigned char)c) || c == '.' || c == '-' || c == ':')) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// A blank secret keeps what is stored; see add_secret().
+static void take_secret(const cJSON *item, char *dst, size_t size)
+{
+    if (cJSON_IsString(item) && item->valuestring[0]) {
+        strlcpy(dst, item->valuestring, size);
+    }
 }
 
 static esp_err_t apply_product(const cJSON *values, void *ctx,
                                char *message, size_t message_size)
 {
     (void)ctx;
+    message[0] = '\0';
+    char text[96];
+    esp_err_t err;
+
+    // Every field is optional on POST - each section saves only its own - but
+    // an unrecognised value is a real error rather than something to coerce.
     const cJSON *restore = cJSON_GetObjectItemCaseSensitive(values, "restore");
     if (cJSON_IsString(restore)) {
-        // Every field is optional on POST, but an unrecognised value is a real
-        // error rather than something to silently coerce to the default.
         dp_restore_t parsed = dp_restore_from_str(restore->valuestring, DP_RESTORE_INVALID);
         if (parsed == DP_RESTORE_INVALID) {
             snprintf(message, message_size, "unknown restore policy");
             return ESP_ERR_INVALID_ARG;
         }
-        esp_err_t err = dp_relay_set_restore(parsed);
+        err = dp_relay_set_restore(parsed);
         if (err != ESP_OK) {
             snprintf(message, message_size, "could not save: %s", esp_err_to_name(err));
             return err;
         }
-        snprintf(message, message_size, "restore policy set to %s",
-                 dp_restore_to_str(parsed));
+        snprintf(text, sizeof(text), "restore policy set to %s", dp_restore_to_str(parsed));
+        append_message(message, message_size, text);
+    }
+
+    const cJSON *source = cJSON_GetObjectItemCaseSensitive(values, "source");
+    if (cJSON_IsString(source)) {
+        const dp_source_t parsed = dp_source_from_str(source->valuestring);
+        if (parsed == DP_SOURCE_INVALID) {
+            snprintf(message, message_size, "unknown printer source");
+            return ESP_ERR_INVALID_ARG;
+        }
+        err = dp_printer_set_source(parsed);
+        if (err != ESP_OK) {
+            snprintf(message, message_size, "could not save: %s", esp_err_to_name(err));
+            return err;
+        }
+        snprintf(text, sizeof(text), "printer set to %s - restart to apply",
+                 source_label(parsed));
+        append_message(message, message_size, text);
+    }
+
+    const cJSON *mk_host = cJSON_GetObjectItemCaseSensitive(values, "mk_host");
+    if (cJSON_IsString(mk_host)) {
+        dc_moonraker_config_t mk = { 0 };
+        dc_moonraker_get_config(&mk);
+        if (!host_valid(mk_host->valuestring, sizeof(mk.host))) {
+            snprintf(message, message_size, "Moonraker host must be an IP or hostname");
+            return ESP_ERR_INVALID_ARG;
+        }
+        strlcpy(mk.host, mk_host->valuestring, sizeof(mk.host));
+        const cJSON *port = cJSON_GetObjectItemCaseSensitive(values, "mk_port");
+        if (port) {
+            const double p = cJSON_IsNumber(port) ? port->valuedouble
+                           : cJSON_IsString(port) ? atof(port->valuestring) : 0;
+            if (p < 1 || p > 65535) {
+                snprintf(message, message_size, "Moonraker port must be 1-65535");
+                return ESP_ERR_INVALID_ARG;
+            }
+            mk.port = (uint16_t)p;
+        }
+        // Reconnects at once when Moonraker is the running source.
+        err = dc_moonraker_set_config(&mk);
+        if (err != ESP_OK) {
+            snprintf(message, message_size, "could not save: %s", esp_err_to_name(err));
+            return err;
+        }
+        append_message(message, message_size, "Moonraker settings saved");
+    }
+
+    const cJSON *bb_host = cJSON_GetObjectItemCaseSensitive(values, "bb_host");
+    if (cJSON_IsString(bb_host)) {
+        dc_bambu_config_t bb = { 0 };
+        dc_bambu_get_config(&bb);
+        if (!host_valid(bb_host->valuestring, sizeof(bb.host))) {
+            snprintf(message, message_size, "printer IP must be an IP or hostname");
+            return ESP_ERR_INVALID_ARG;
+        }
+        strlcpy(bb.host, bb_host->valuestring, sizeof(bb.host));
+        const cJSON *serial = cJSON_GetObjectItemCaseSensitive(values, "bb_serial");
+        if (cJSON_IsString(serial)) {
+            if (strlen(serial->valuestring) >= sizeof(bb.serial)) {
+                snprintf(message, message_size, "serial number is too long");
+                return ESP_ERR_INVALID_ARG;
+            }
+            strlcpy(bb.serial, serial->valuestring, sizeof(bb.serial));
+        }
+        take_secret(cJSON_GetObjectItemCaseSensitive(values, "bb_code"),
+                    bb.code, sizeof(bb.code));
+        err = dc_bambu_set_config(&bb);
+        if (err != ESP_OK) {
+            snprintf(message, message_size, "could not save: %s", esp_err_to_name(err));
+            return err;
+        }
+        append_message(message, message_size, "Bambu settings saved - restart to apply");
     }
     return ESP_OK;
 }
@@ -591,7 +846,9 @@ static esp_err_t factory_reset(void *ctx)
     (void)ctx;
     esp_err_t token_err = token_store("");
     esp_err_t relay_err = dp_relay_clear();
-    return relay_err != ESP_OK ? relay_err : token_err;
+    esp_err_t printer_err = dp_printer_clear();
+    return relay_err != ESP_OK ? relay_err
+         : token_err != ESP_OK ? token_err : printer_err;
 }
 
 // -------------------------------------------------------------- /power

@@ -42,6 +42,9 @@ h1{ font-size: 20px; margin: 0 0 4px; }
 .card .name small{ color: var(--muted-foreground); }
 .dot{ width: 12px; height: 12px; border-radius: 50%; background: var(--muted-foreground); flex: none; }
 .on .dot{ background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.card.printer.busy .dot{ background: var(--primary); box-shadow: 0 0 8px var(--primary); }
+.card.printer.bad .dot{ background: var(--destructive); }
+.card .name small{ display: block; }
 button{ font: inherit; font-weight: 600; min-width: 84px; padding: 10px 16px; border-radius: 8px;
   border: 1px solid var(--border); background: var(--card); color: var(--foreground); cursor: pointer; }
 button.go{ background: var(--primary); color: var(--primary-foreground); border-color: transparent; }
@@ -67,6 +70,12 @@ footer a{ color: var(--primary); }
     <span class="dot"></span>
     <span class="name"><b>USB 1</b><small id="s-usb1">--</small></span>
     <button type="button" id="b-usb1" disabled>--</button>
+  </div>
+
+  <div class="card printer" id="c-printer" hidden>
+    <span class="dot"></span>
+    <span class="name"><b id="p-title">Printer</b><small id="p-line">--</small>
+      <small id="p-temps"></small></span>
   </div>
 
   <p id="msg" role="status" aria-live="polite"></p>
@@ -99,10 +108,44 @@ footer a{ color: var(--primary); }
     });
     var names = { off: 'stays off', on: 'switches on', last: 'restores last state' };
     $('restore').textContent = names[state.restore] || state.restore || '--';
+    renderPrinter(state.printer);
     var h = state.heap;
     function kb(n){ return Math.round(n / 1024) + ' KB'; }
     $('heap').textContent = h ? kb(h.free) + ' free · lowest ' + kb(h.min_free) +
       ' · largest block ' + kb(h.largest_block) : '--';
+  }
+
+  // Printer card: hidden in plug-only mode (printer is null).
+  function renderPrinter(p){
+    var card = $('c-printer');
+    if(!p){ card.hidden = true; return; }
+    card.hidden = false;
+    var names = { moonraker: 'Klipper', bambu: 'Bambu Lab' };
+    $('p-title').textContent = names[p.source] || 'Printer';
+    var line, cls = 'card printer';
+    if(p.connected){
+      line = p.state.charAt(0).toUpperCase() + p.state.slice(1);
+      if(p.progress != null && (p.state === 'printing' || p.state === 'paused'))
+        line += ' · ' + Math.round(p.progress * 100) + '%';
+      if(p.filename) line += ' · ' + p.filename;
+      if(p.state === 'printing' || p.state === 'paused' || p.state === 'preparing') cls += ' busy';
+      else if(p.state === 'error') cls += ' bad';
+      else cls += ' on';
+    } else {
+      line = p.link === 'unconfigured' ? 'Not set up — see Settings & setup'
+           : p.link === 'off' ? 'Not running' + (p.note ? ' (' + p.note + ')' : '')
+           : 'Connecting…';
+      if(p.link === 'off') cls += ' bad';
+    }
+    card.className = cls;
+    $('p-line').textContent = line;
+    function t(v){ return v == null ? '--' : Math.round(v) + '°C'; }
+    var temps = [];
+    if(p.connected){
+      if(p.nozzle != null) temps.push('Nozzle ' + t(p.nozzle));
+      temps.push('Bed ' + t(p.bed) + (p.bed_target ? ' → ' + t(p.bed_target) : ''));
+    }
+    $('p-temps').textContent = temps.join(' · ');
   }
 
   function poll(){
