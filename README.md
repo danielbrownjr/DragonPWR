@@ -4,12 +4,19 @@ Open firmware for the [BIGTREETECH Panda PWR](https://github.com/bigtreetech/Pan
 built on the shared [`dragon-core`](https://github.com/justinh-rahb/dragon-core)
 networking and printer-integration components.
 
-**Status: Phase 1 firmware builds; nothing has run on hardware yet.**
+**Status: Phase 1 is bench-verified on a real unit.** The relay, USB1, the Bind
+button, the web UI, the control token and OTA from the browser all work. There
+is no metering and no printer integration yet - see the
+[roadmap](docs/ROADMAP.md).
 
-The pin map is reverse-engineered from BIGTREETECH's stock images and has
-not been confirmed against a board. Do not flash this expecting it to work,
-and read [docs/HARDWARE_ANALYSIS.md](docs/HARDWARE_ANALYSIS.md) before you
-wire anything to mains.
+The pin map was reverse-engineered from BIGTREETECH's stock images. The outputs
+and the button are confirmed on a board; GPIO6 and the metering chip are not.
+Read [docs/HARDWARE_ANALYSIS.md](docs/HARDWARE_ANALYSIS.md) before you wire
+anything to mains.
+
+Once installed, the outlet is switched from `http://<device>/power`. The
+device's main page is the shared family UI, which has no DragonPWR dashboard
+yet; its Settings screen works.
 
 ## Hardware
 
@@ -94,7 +101,7 @@ is subject to a sporadic hardware quirk — see docs/BENCH_NOTES.md,
 the configured 115200; retry the reset or open the monitor at 74880 if a
 log looks like garbage.
 
-The current Phase 1 image is 778 K against a 1280 K app slot. `dependencies.lock`
+The current image is about 793 K against a 1280 K app slot. `dependencies.lock`
 is committed: `dragon-core` is pinned by tag and the lock is what makes that
 reproducible.
 

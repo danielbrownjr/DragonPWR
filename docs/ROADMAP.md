@@ -28,32 +28,41 @@ it can answer questions neither side can answer alone:
 
 Every phase below is ordered by how directly it serves that.
 
-## The constraint that shapes the phases
+## The constraints that shape the phases
 
-Flash, not ideas.
+RAM first, then flash. The ESP32-C2 has **272 KB of SRAM** against the C3's
+400 KB, and RAM ran out long before flash did.
 
 | | |
 |---|---|
 | App slot (stock partition table) | **1280 K** |
-| **DragonPWR Phase 1, measured** | **768 K — 40 % of the slot free** |
+| **DragonPWR end of Phase 1, measured** | **793 K — 38 % of the slot free** |
 | DragonStatus v1.0.0 OTA image (ESP32-C3) | 1.15 MB |
 | DragonVent v0.5.9 OTA image (ESP32) | 1.20 MB |
+| **Heap free after boot, measured on hardware** | **68 KB** (largest block 58 KB) |
+| **Heap low-water after using the web UI** | **56 KB** |
 
-The Phase 1 number is real, from `idf.py build` against ESP-IDF v5.3.1 for
-`esp32c2`: Wi-Fi, captive portal, the family SPA, mDNS, OTA and the product API
-come to 778 K, leaving about 500 K free. That is far more headroom than the
-sibling images suggested — they carry Moonraker, Bambu, lighting and audio on
-top. The budget is real but it is not tight yet; re-measure at the end of every
-phase and keep this table honest.
+The image size is from `idf.py build` for `esp32c2` (ESP-IDF v5.3.1 here, v5.3.5
+on the bench machine; the two differ by a few K). The heap numbers are read off
+a real unit through `/api/v2/state` and the `/power` footer: free right now,
+the low-water mark since boot, and the largest contiguous block.
 
-Two consequences still stand:
+Before the RAM tuning in `sdkconfig.defaults` (Wi-Fi out of IRAM, fewer Wi-Fi
+buffers, A-MPDU off, at most four HTTP sockets) the same unit booted with 47 KB
+free and fell to **4 KB** after a minute of browsing - one burst from an
+allocation failure, which on this chip means a reset and a dropped relay.
+Re-measure at the end of every phase, on hardware, and keep this table honest.
+
+Consequences:
 
 - `dc_source` only *starts* the selected printer client, but every linked client
-  still costs flash. Ship **Moonraker-only** first, then add sources one at a
-  time and watch the map file.
-- Bambu LAN MQTT needs mbedTLS, and the ESP32-C2 has **272 KB of SRAM** against
-  the C3's 400 KB. If something has to go, Bambu is the candidate: dropping it
-  buys back both flash and RAM.
+  still costs flash and static RAM. Add sources one at a time and re-measure.
+- **Bambu does not fit today.** LAN MQTT over TLS peaks at roughly 50-60 KB
+  (a 16 KB report buffer in `dc_bambu`, 30-40 KB for the handshake, MQTT),
+  against a 56 KB low-water mark. The known ways to make room are shrinking
+  `dc_evlog`'s fixed 16 KB console ring upstream in dragon-core and tuning
+  mbedTLS for low memory (dynamic buffers, a smaller outgoing record). Until
+  both land and the numbers are re-measured, Bambu stays off this chip.
 
 `CONFIG_COMPILER_OPTIMIZATION_SIZE=y` from the start, as DragonStatus does.
 
@@ -69,10 +78,23 @@ the command routes from day one, and the matching surface is a **contribution to
 dragon-core's `dc_ui`**, not something this repo can carry alone. Phase 1 is
 usable without it.
 
-## Phase 0 — Bench confirmation ⛔ blocked on hardware
+Meanwhile a `dragonpwr` device lands on DragonBreath's dashboard, and two
+stopgaps cover the gap:
 
-Everything in [HARDWARE_ANALYSIS.md](HARDWARE_ANALYSIS.md) is derived from the
-stock binary and has never been checked against a board.
+- **`/power`** (`components/dp_portal/power.html`): Outlet and USB 1 toggles,
+  live state and heap, in the family look and token transport. Delete it once
+  `dc_ui` has a DragonPWR view.
+- **DragonBreath's Settings contract is served**, so the shared Settings screen
+  works: event log (`/api/v2/logs`), Maintenance (firmware, device ID, boot ID,
+  inactive slot) and its Restart, Factory reset and Boot inactive slot buttons.
+  The dashboard itself still shows DragonBreath's chamber readout, all dashes.
+
+## Phase 0 — Bench confirmation
+
+Everything in [HARDWARE_ANALYSIS.md](HARDWARE_ANALYSIS.md) was derived from the
+stock binary; these items check it against a board. What is left needs the case
+open, and a spare unit has been set aside for the teardown so the working one
+stays sealed.
 
 - [x] Back up the stock flash over USB **before anything else** — BTT publishes
       the app images but not a full flash dump, so this is the only way back.
@@ -87,8 +109,11 @@ stock binary and has never been checked against a board.
       deliberate on/off toggle over `/set` (09-14). See docs/BENCH_NOTES.md.
 - [ ] Identify GPIO6 physically. The handling is edge-triggered-toggle, but the
       manual documents only the Bind button and no photo shows a second control,
-      so what drives this pin is genuinely unknown
-- [ ] Photograph the metering IC and match it against the register map
+      so what drives this pin is genuinely unknown. On the teardown unit: follow
+      its trace
+- [ ] Photograph the metering IC and match it against the register map. On the
+      teardown unit, also: which ESP pins reach it (UART1 per the stock
+      firmware), and the shunt resistor's value, which scales current
 - [x] Determine whether the relay is latching or momentary — 5 on/off cycles
       driven 1.5 s apart over `/api/v2/command`; clicks landed at that same
       ~1.5 s cadence (not ~3 s), i.e. **both** the on and the off edge
@@ -138,23 +163,34 @@ browser."
       control-token scheme (presence-only until a token is set, exact match
       after). Stock `/set` has its own gate so HA-Panda-PWR keeps working: an
       Origin check (refuses cross-site browser posts) until a token is set,
-      the token after
-      No dedicated dc_ui settings card yet (that surface is dragonbreath-only
-      today) — set/clear the token directly against `/api/v2/token` until one
-      lands
+      the token after. There is no token card in the UI yet (`dc_ui` shows it
+      to dragonbreath only), so set and clear it against `/api/v2/token`
+- [x] OTA from the browser that survives a power cycle, confirmed on the bench.
+      A new image confirms itself once the portal is up, so a bad one rolls
+      back - **but only on a bootloader built with rollback**. The bench unit's
+      is not (every boot logs `image new`), so it needs one serial flash of a
+      current build before that protection is real. Every boot logs its slot,
+      OTA state and reset reason to the event log
+- [x] `/power` control page, and DragonBreath's Settings contract (event log,
+      IDs, inactive slot, Restart / Factory reset / Boot inactive slot) - see
+      the upstream section above
+- [x] Heap reporting, and RAM tuning that took the low-water mark from 4 KB
+      to 56 KB - see the constraints table
 
 No meter and no printer integration in this phase. The point is a device that
 is safe to leave plugged in.
 
-**Built, never run.** The tree compiles clean for `esp32c2` and the emitted
-partition table is byte-identical to stock, but no part of it has executed on
-hardware. Phase 0 comes first.
+**Bench-verified.** Everything above has run on a real Panda PWR and is installed
+by OTA from the browser. Not yet exercised: a factory reset from the Maintenance
+card, and booting the inactive slot.
 
 ## Phase 2 — Printer awareness
 
 The three features that justify the product.
 
-- [ ] `dc_moonraker` as the first and only control source
+- [ ] A printer source. `dc_moonraker` for Klipper printers is the one that fits:
+      plain HTTP, no TLS. The bench printer is a Bambu X1C (X1plus), and
+      `dc_bambu` does not fit in RAM yet - see the constraints section
 - [ ] **Mid-print interlock.** Every power-off path — web, MQTT, countdown,
       schedule, button — refuses while the printer reports printing, paused, or
       heating. `dc_portal`'s `guard_operation` already has this shape for OTA and
@@ -210,6 +246,8 @@ The three features that justify the product.
   BTT's `pwr_api.md` and the LMK is in the binary — but ESP-NOW coexisting with
   Wi-Fi on a 272 KB C2, for a feature that only helps owners of a second BTT
   device, is a bad trade against the flash budget.
-- **Bambu and PrusaLink sources.** Not on principle, on budget. Revisit once
-  Phase 3 lands and the real numbers are known.
+- **Bambu and PrusaLink sources.** Not on principle, on budget: Bambu's TLS
+  client needs more heap than this chip has spare (see the constraints
+  section, with the measured numbers). Revisit after the upstream console ring
+  and mbedTLS changes, and re-measure on hardware.
 - **Cloud anything.** LAN only, like the rest of the family.
