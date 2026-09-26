@@ -15,6 +15,7 @@
 #include "driver/uart.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "esp_ota_ops.h"
 #include "nvs_flash.h"
 
 static const char *TAG = "dragonpwr";
@@ -68,6 +69,36 @@ static esp_err_t configure_network_identity(void)
     return dc_wifi_set_identity(&identity);
 }
 
+// CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE boots a freshly OTA'd image as
+// "pending verify" and, unless the app confirms it, rolls back to the previous
+// slot on the next reset - any reset, including the power cut a plug sees all
+// the time. So without this an OTA works until the mains next blips and then
+// silently reverts.
+//
+// Confirmed once the portal is serving: at that point the device can be
+// reached and can take another update, which is the property rollback exists
+// to protect. Anything that fails before here hits ESP_ERROR_CHECK, resets,
+// and rolls back. It cannot catch an image that serves the portal but is
+// unreachable over the air (the wrong-crystal failure in docs/BENCH_NOTES.md
+// was exactly that); serial is still the recovery for those.
+static void confirm_running_image(void)
+{
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    esp_ota_img_states_t state;
+    if (esp_ota_get_state_partition(running, &state) != ESP_OK ||
+        state != ESP_OTA_IMG_PENDING_VERIFY) {
+        return;   // serial-flashed, or already confirmed
+    }
+    esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "could not confirm OTA image, it will roll back on the "
+                      "next reset: %s", esp_err_to_name(err));
+        return;
+    }
+    ESP_LOGI(TAG, "OTA image confirmed on %s", running->label);
+    dc_evlog_add("OTA image confirmed");
+}
+
 void app_main(void)
 {
     reapply_console_baud();
@@ -89,6 +120,7 @@ void app_main(void)
     ESP_ERROR_CHECK(configure_network_identity());
     ESP_ERROR_CHECK(dc_wifi_start());
     ESP_ERROR_CHECK(dp_portal_start());
+    confirm_running_image();
 
     ESP_LOGI(TAG, "up: mains=%s usb1=%s",
              dp_relay_get(DP_OUTPUT_MAINS) ? "on" : "off",
