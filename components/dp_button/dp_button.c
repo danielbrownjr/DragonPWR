@@ -14,6 +14,11 @@ static const char *TAG = "dp_button";
 // app_ctl_task). A stable disagreement for DP_BUTTON_DEBOUNCE_TICKS polls
 // (60 ms at the interval below) is treated as a real transition; anything
 // shorter is contact bounce or noise.
+//
+// The tick counters only advance while a pin disagrees with its stable
+// level, so they stay bounded by DP_BUTTON_DEBOUNCE_TICKS. Counting every
+// poll would overflow a signed int after ~497 days at 20 ms - realistic
+// uptime for a plug - and leave the button dead once it wrapped negative.
 #define DP_BUTTON_POLL_MS        20
 #define DP_BUTTON_DEBOUNCE_TICKS 3
 
@@ -73,7 +78,7 @@ static void poll_task(void *arg)
         if (button_now != button_candidate) {
             button_candidate = button_now;
             button_ticks = 0;
-        } else if (++button_ticks >= DP_BUTTON_DEBOUNCE_TICKS && button_stable != button_candidate) {
+        } else if (button_stable != button_candidate && ++button_ticks >= DP_BUTTON_DEBOUNCE_TICKS) {
             button_stable = button_candidate;
             if (button_stable == 0) {   // active low: press is the falling edge
                 toggle_mains("button");
@@ -84,7 +89,7 @@ static void poll_task(void *arg)
         if (toggle_now != toggle_candidate) {
             toggle_candidate = toggle_now;
             toggle_ticks = 0;
-        } else if (++toggle_ticks >= DP_BUTTON_DEBOUNCE_TICKS && toggle_stable != toggle_candidate) {
+        } else if (toggle_stable != toggle_candidate && ++toggle_ticks >= DP_BUTTON_DEBOUNCE_TICKS) {
             toggle_stable = toggle_candidate;
             // Logged, not acted on. GPIO6 has no pull resistor - matching
             // stock, since it's meant to be externally driven - and its
