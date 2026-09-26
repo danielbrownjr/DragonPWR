@@ -9,11 +9,16 @@
 #include "cJSON.h"
 #include "dc_evlog.h"
 #include "dc_portal.h"
+#include "dc_wifi.h"
 #include "dp_relay.h"
 #include "esp_app_desc.h"
 #include "esp_log.h"
 #include "esp_mac.h"
+#include "esp_ota_ops.h"
 #include "esp_random.h"
+#include "esp_system.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 
@@ -264,6 +269,17 @@ static esp_err_t info_get(httpd_req_t *req)
     cJSON_AddStringToObject(root, "firmware", app ? app->version : "unknown");
     cJSON_AddStringToObject(root, "device_id", s_device_id);
     cJSON_AddStringToObject(root, "boot_id", s_boot_id);
+
+    // What "Boot inactive slot" would boot. dc_ui shows the button only when
+    // this is present, so leave it out when the slot has no readable app.
+    const esp_partition_t *other = esp_ota_get_next_update_partition(NULL);
+    esp_app_desc_t other_desc;
+    if (other && esp_ota_get_partition_description(other, &other_desc) == ESP_OK) {
+        cJSON *slot = cJSON_AddObjectToObject(root, "inactive_slot");
+        cJSON_AddStringToObject(slot, "label", other->label);
+        cJSON_AddStringToObject(slot, "project", other_desc.project_name);
+        cJSON_AddStringToObject(slot, "version", other_desc.version);
+    }
 
     // The shared SPA gates optional screens on these. There is no dragonpwr
     // surface in dc_ui yet, so today this only selects the common setup and
@@ -521,23 +537,29 @@ static esp_err_t apply_product(const cJSON *values, void *ctx,
     return ESP_OK;
 }
 
+// Every path that reboots goes through here. A reboot drops the relay: the
+// outputs are re-driven from scratch by dp_relay_init. Cutting mains under
+// whatever is plugged in - mid-print, most likely - is not something to do
+// silently, so require the user to switch the outlet off first.
+static esp_err_t refuse_reboot_if_on(const char *what, char *message,
+                                     size_t message_size)
+{
+    if (dp_relay_get(DP_OUTPUT_MAINS)) {
+        snprintf(message, message_size,
+                 "Switch the outlet off first: %s reboots the device, which drops "
+                 "the relay and cuts power to whatever is plugged in.", what);
+        return ESP_ERR_INVALID_STATE;
+    }
+    return ESP_OK;
+}
+
 static esp_err_t guard_operation(dc_portal_operation_t operation, void *ctx,
                                  char *message, size_t message_size)
 {
     (void)ctx;
-    // Both operations reboot, and a reboot drops the relay: the outputs are
-    // re-driven from scratch by dp_relay_init. Cutting mains under whatever is
-    // plugged in - mid-print, most likely - is not something to do silently, so
-    // require the user to switch the outlet off first.
-    if (dp_relay_get(DP_OUTPUT_MAINS)) {
-        snprintf(message, message_size,
-                 "Switch the outlet off first: %s reboots the device, which drops "
-                 "the relay and cuts power to whatever is plugged in.",
-                 operation == DC_PORTAL_OPERATION_OTA ? "updating firmware"
-                                                      : "a factory reset");
-        return ESP_ERR_INVALID_STATE;
-    }
-    return ESP_OK;
+    return refuse_reboot_if_on(operation == DC_PORTAL_OPERATION_OTA
+                                   ? "updating firmware" : "a factory reset",
+                               message, message_size);
 }
 
 static esp_err_t factory_reset(void *ctx)
@@ -548,14 +570,139 @@ static esp_err_t factory_reset(void *ctx)
     return relay_err != ESP_OK ? relay_err : token_err;
 }
 
+// -------------------------------------------------------------- /power
+// Stopgap control page (components/dp_portal/power.html): dc_ui has no
+// DragonPWR surface yet, so nothing in the SPA can switch the outputs. The page
+// itself is static and open; the command it POSTs is token-gated as usual.
+
+extern const char power_html_start[] asm("_binary_power_html_start");
+
+static esp_err_t power_page_get(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "text/html; charset=utf-8");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    // EMBED_TXTFILES NUL-terminates the blob.
+    return httpd_resp_sendstr(req, power_html_start);
+}
+
+// ------------------------------------------------------ maintenance routes
+// The routes dc_ui's Maintenance card calls. They are DragonBreath's contract;
+// DragonPWR served none of them, so its Restart, Factory reset and Boot
+// inactive slot buttons all failed with "Refused: error".
+
+static bool require_auth(httpd_req_t *req)
+{
+    if (authorize(req, NULL)) {
+        return true;
+    }
+    send_error(req, "403 Forbidden", "authorization required");
+    return false;
+}
+
+// Answers, lets the response leave, then reboots. Runs on the httpd task, the
+// same way dc_portal's own reset does.
+static esp_err_t reply_and_restart(httpd_req_t *req, const char *event)
+{
+    dc_evlog_add("%s", event);
+    cJSON *reply = cJSON_CreateObject();
+    cJSON_AddBoolToObject(reply, "ok", true);
+    cJSON_AddBoolToObject(reply, "rebooting", true);
+    send_json(req, reply);
+    vTaskDelay(pdMS_TO_TICKS(500));
+    esp_restart();
+    return ESP_OK; // unreachable
+}
+
+static bool maintenance_allowed(httpd_req_t *req, const char *what)
+{
+    if (!require_auth(req)) {
+        return false;
+    }
+    char message[160];
+    if (refuse_reboot_if_on(what, message, sizeof(message)) != ESP_OK) {
+        send_error(req, "409 Conflict", message);
+        return false;
+    }
+    return true;
+}
+
+static esp_err_t restart_post(httpd_req_t *req)
+{
+    if (!maintenance_allowed(req, "a restart")) {
+        return ESP_OK;
+    }
+    return reply_and_restart(req, "restart requested");
+}
+
+static esp_err_t factory_reset_post(httpd_req_t *req)
+{
+    if (!require_auth(req)) {
+        return ESP_OK;
+    }
+    // Same guard as dc_portal's /api/v1/system/reset: the query string is
+    // what separates a deliberate erase from a stray POST.
+    char query[48];
+    char value[24];
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK ||
+        httpd_query_key_value(query, "confirm", value, sizeof(value)) != ESP_OK ||
+        strcmp(value, "factory-reset") != 0) {
+        return send_error(req, "400 Bad Request",
+                          "factory reset requires confirm=factory-reset");
+    }
+    char message[160];
+    if (refuse_reboot_if_on("a factory reset", message, sizeof(message)) != ESP_OK) {
+        return send_error(req, "409 Conflict", message);
+    }
+    esp_err_t err = factory_reset(NULL);
+    if (err == ESP_OK) {
+        err = dc_wifi_clear_creds();
+    }
+    if (err != ESP_OK) {
+        return send_error(req, "500 Internal Server Error", esp_err_to_name(err));
+    }
+    return reply_and_restart(req, "factory reset");
+}
+
+static esp_err_t boot_inactive_post(httpd_req_t *req)
+{
+    if (!maintenance_allowed(req, "switching firmware slot")) {
+        return ESP_OK;
+    }
+    const esp_partition_t *other = esp_ota_get_next_update_partition(NULL);
+    esp_app_desc_t desc;
+    if (!other || esp_ota_get_partition_description(other, &desc) != ESP_OK) {
+        return send_error(req, "409 Conflict",
+                          "the other slot holds no firmware to boot");
+    }
+    // Verifies the whole image before it becomes the boot partition, so a
+    // blank or damaged slot is refused here rather than failing at boot.
+    //
+    // With a rollback-enabled bootloader, the image booted this way has to
+    // confirm itself like any OTA. Stock firmware never does, so a switch back
+    // to stock lasts until its next reset and then returns to DragonPWR. A
+    // permanent return to stock is the serial restore in the README.
+    esp_err_t err = esp_ota_set_boot_partition(other);
+    if (err != ESP_OK) {
+        return send_error(req, "409 Conflict", esp_err_to_name(err));
+    }
+    char event[DC_EVLOG_TEXT_BYTES];
+    snprintf(event, sizeof(event), "booting %s: %s %s", other->label,
+             desc.project_name, desc.version);
+    return reply_and_restart(req, event);
+}
+
 // ------------------------------------------------------------------ routes
 
 static const httpd_uri_t ROUTES[] = {
+    { .uri = "/power",             .method = HTTP_GET,  .handler = power_page_get },
     { .uri = "/api/v2/info",       .method = HTTP_GET,  .handler = info_get },
     { .uri = "/api/v2/state",      .method = HTTP_GET,  .handler = state_get },
     { .uri = "/api/v2/logs",       .method = HTTP_GET,  .handler = logs_get },
     { .uri = "/api/v2/command",    .method = HTTP_POST, .handler = command_post },
     { .uri = "/api/v2/token",      .method = HTTP_POST, .handler = token_post },
+    { .uri = "/api/v2/restart",       .method = HTTP_POST, .handler = restart_post },
+    { .uri = "/api/v2/factory-reset", .method = HTTP_POST, .handler = factory_reset_post },
+    { .uri = "/api/v2/boot-inactive", .method = HTTP_POST, .handler = boot_inactive_post },
     // Stock compatibility.
     { .uri = "/set",               .method = HTTP_POST, .handler = stock_set_post },
     { .uri = "/update_ele_data",   .method = HTTP_GET,  .handler = stock_state_get },
