@@ -730,6 +730,14 @@ esp_err_t dp_portal_start(void)
     // drawing on the RF noise source here, not the boot-time fallback.
     snprintf(s_boot_id, sizeof(s_boot_id), "%08" PRIx32, esp_random());
 
+    // RAM: every open socket holds TCP send/receive buffers, and a browser
+    // loading the UI opens up to six at once. Cap at four and let the server
+    // recycle the least recently used one instead of refusing a fifth.
+    // dc_portal still applies its stack floor on top of this.
+    httpd_config_t http = HTTPD_DEFAULT_CONFIG();
+    http.max_open_sockets = 4;
+    http.lru_purge_enable = true;
+
     const dc_portal_config_t config = {
         .product             = DP_PRODUCT,
         .display_name        = DP_DISPLAY_NAME,
@@ -740,6 +748,7 @@ esp_err_t dp_portal_start(void)
         .authorize           = authorize,
         .guard_operation     = guard_operation,
         .factory_reset       = factory_reset,
+        .httpd_config        = &http,
     };
     esp_err_t err = dc_portal_start(&config);
     if (err != ESP_OK) {

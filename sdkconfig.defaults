@@ -33,3 +33,21 @@ CONFIG_HTTPD_MAX_URI_LEN=1024
 
 # Room for logging before the portal is up.
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# RAM. Measured on the bench: 47 KB free after boot, 4 KB at the low-water
+# mark after a minute of browsing the web UI - one burst from running out.
+# This is a smart plug: Wi-Fi throughput does not matter, headroom does.
+#
+# Wi-Fi hot paths live in flash instead of IRAM; on the C2 IRAM and DRAM
+# share one pool, so this is heap.
+CONFIG_ESP_WIFI_IRAM_OPT=n
+CONFIG_ESP_WIFI_RX_IRAM_OPT=n
+# Fewer buffers, allocated from heap during bursts (a page load is a burst).
+# Defaults are 10 static RX, 32 dynamic RX, 32 dynamic TX, ~1.6 KB each.
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=6
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=12
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=16
+CONFIG_ESP_WIFI_MGMT_SBUF_NUM=16
+# A-MPDU holds RX buffers for reordering; worth it for throughput only.
+CONFIG_ESP_WIFI_AMPDU_RX_ENABLED=n
+CONFIG_ESP_WIFI_AMPDU_TX_ENABLED=n
