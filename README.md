@@ -91,17 +91,38 @@ cd C:\Users\danie\Coding\DragonPWR
 ```
 
 ```bash
-idf.py -D IDF_TARGET=esp32c2 build
+idf.py build                                            # full: both printer clients
+idf.py -B build-lite      -D DP_VARIANT=lite      build   # plug only, smallest
+idf.py -B build-moonraker -D DP_VARIANT=moonraker build   # + Klipper
+idf.py -B build-bambu     -D DP_VARIANT=bambu     build   # + Bambu
 ```
 
+`DP_VARIANT` picks which printer clients are linked into the image; the printer
+itself is still chosen at runtime in Device setup, from the ones the build
+carries. A left-out client is not in the image at all:
+
+| Variant | Image | Static RAM | Carries |
+|---|---|---|---|
+| `lite` | 795 K | 98.5 KB | plug only |
+| `moonraker` | 900 K | 100.5 KB | Klipper |
+| `bambu` | 906 K | 100.6 KB | Bambu Lab |
+| `full` (default) | 925 K | 101.1 KB | both |
+
+Most of the step from lite to moonraker is mbedTLS: Moonraker is plain `ws://`,
+but the websocket client always links its TLS transport and has no option to
+leave it out. Each build directory keeps its own `sdkconfig`, generated from
+`sdkconfig.defaults`, so an old one in the source tree no longer shadows the
+defaults - delete any `sdkconfig` left over at the top level.
+
 To flash and watch the console over the CH340 bridge (shows up as a COM
-port, e.g. `COM6`): `idf.py -p COM6 flash`. The console UART on this board
+port, e.g. `COM6`): `idf.py -p COM6 flash`, with the same `-B` and
+`-D DP_VARIANT` as the build. The console UART on this board
 is subject to a sporadic hardware quirk — see docs/BENCH_NOTES.md,
 2026-09-14 session — where it sometimes comes up at 74880 baud instead of
 the configured 115200; retry the reset or open the monitor at 74880 if a
 log looks like garbage.
 
-The current image is about 793 K against a 1280 K app slot. `dependencies.lock`
+The app slot is 1280 K. `dependencies.lock`
 is committed: `dragon-core` is pinned by tag and the lock is what makes that
 reproducible.
 

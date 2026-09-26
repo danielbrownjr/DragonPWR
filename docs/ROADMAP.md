@@ -37,6 +37,7 @@ RAM first, then flash. The ESP32-C2 has **272 KB of SRAM** against the C3's
 |---|---|
 | App slot (stock partition table) | **1280 K** |
 | **DragonPWR end of Phase 1, measured** | **793 K — 38 % of the slot free** |
+| **With printer sources (`DP_VARIANT`)** | lite 795 K · moonraker 900 K · bambu 906 K · full 925 K |
 | DragonStatus v1.0.0 OTA image (ESP32-C3) | 1.15 MB |
 | DragonVent v0.5.9 OTA image (ESP32) | 1.20 MB |
 | **Heap free after boot, measured on hardware** | **68 KB** (largest block 58 KB) |
