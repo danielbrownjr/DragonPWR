@@ -250,6 +250,10 @@ static esp_err_t info_get(httpd_req_t *req)
     cJSON_AddStringToObject(root, "product", DP_PRODUCT);
     cJSON_AddStringToObject(root, "display_name", DP_DISPLAY_NAME);
     cJSON_AddStringToObject(root, "version", app ? app->version : "unknown");
+    // dc_ui reads the running version from "firmware" (footer, Maintenance,
+    // and the only on-screen way to tell an OTA stuck); "version" stays for
+    // anything already reading it.
+    cJSON_AddStringToObject(root, "firmware", app ? app->version : "unknown");
 
     // The shared SPA gates optional screens on these. There is no dragonpwr
     // surface in dc_ui yet, so today this only selects the common setup and
