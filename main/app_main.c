@@ -16,6 +16,7 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
+#include "esp_system.h"
 #include "nvs_flash.h"
 
 static const char *TAG = "dragonpwr";
@@ -81,18 +82,59 @@ static esp_err_t configure_network_identity(void)
 // and rolls back. It cannot catch an image that serves the portal but is
 // unreachable over the air (the wrong-crystal failure in docs/BENCH_NOTES.md
 // was exactly that); serial is still the recovery for those.
+static const char *ota_state_str(esp_err_t err, esp_ota_img_states_t state)
+{
+    if (err != ESP_OK) {
+        return "unknown";
+    }
+    switch (state) {
+    case ESP_OTA_IMG_NEW:            return "new";
+    case ESP_OTA_IMG_PENDING_VERIFY: return "pending";
+    case ESP_OTA_IMG_VALID:          return "valid";
+    case ESP_OTA_IMG_INVALID:        return "invalid";
+    case ESP_OTA_IMG_ABORTED:        return "aborted";
+    case ESP_OTA_IMG_UNDEFINED:      return "undefined";
+    default:                         return "?";
+    }
+}
+
+static const char *reset_reason_str(esp_reset_reason_t reason)
+{
+    switch (reason) {
+    case ESP_RST_POWERON:  return "power-on";
+    case ESP_RST_SW:       return "restart";
+    case ESP_RST_PANIC:    return "panic";
+    case ESP_RST_INT_WDT:  return "int-wdt";
+    case ESP_RST_TASK_WDT: return "task-wdt";
+    case ESP_RST_WDT:      return "wdt";
+    case ESP_RST_BROWNOUT: return "brownout";
+    default:               return "other";
+    }
+}
+
 static void confirm_running_image(void)
 {
     const esp_partition_t *running = esp_ota_get_running_partition();
-    esp_ota_img_states_t state;
-    if (esp_ota_get_state_partition(running, &state) != ESP_OK ||
-        state != ESP_OTA_IMG_PENDING_VERIFY) {
-        return;   // serial-flashed, or already confirmed
+    esp_ota_img_states_t state = ESP_OTA_IMG_UNDEFINED;
+    const esp_err_t state_err = esp_ota_get_state_partition(running, &state);
+
+    // One line per boot, into the event log the web UI shows. The log is RAM
+    // only, so this is the only way to tell from a browser which slot booted,
+    // whether the bootloader treated it as a fresh OTA ("pending" - "new"
+    // means the bootloader was built without rollback), and why the last
+    // reset happened.
+    dc_evlog_add("boot %s, image %s, reset %s", running->label,
+                 ota_state_str(state_err, state),
+                 reset_reason_str(esp_reset_reason()));
+
+    if (state_err != ESP_OK || state != ESP_OTA_IMG_PENDING_VERIFY) {
+        return;   // serial-flashed, already confirmed, or no rollback
     }
     esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "could not confirm OTA image, it will roll back on the "
                       "next reset: %s", esp_err_to_name(err));
+        dc_evlog_add("OTA confirm FAILED: %s", esp_err_to_name(err));
         return;
     }
     ESP_LOGI(TAG, "OTA image confirmed on %s", running->label);
