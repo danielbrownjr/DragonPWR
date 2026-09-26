@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A fake Moonraker, for testing DragonPWR's Klipper source without a printer.
+"""fakermoonyraker: a fake Moonraker, for testing DragonPWR's Klipper source without a printer.
 
 It speaks the small part of Moonraker's websocket API that dc_moonraker uses -
 printer.objects.subscribe, server.files.metadata, and notify_status_update
@@ -8,7 +8,7 @@ keyboard. Point the plug at this machine's IP, port 7125, in
 Settings > Device setup > Moonraker, with the printer source set to Klipper.
 
     pip install websockets
-    python tools/fake_moonraker.py
+    python tools/fakermoonyraker.py
 
 Then type a command and press Enter:
 
@@ -185,7 +185,7 @@ def keyboard(loop):
 
 async def main():
     async with websockets.serve(handle, "0.0.0.0", PORT, ping_interval=None):
-        print(f"fake Moonraker on port {PORT} (websocket /websocket). Type a command, or quit.")
+        print(f"fakermoonyraker on port {PORT} (websocket /websocket). Type a command, or quit.")
         threading.Thread(target=keyboard, args=(asyncio.get_running_loop(),), daemon=True).start()
         await pusher()
 

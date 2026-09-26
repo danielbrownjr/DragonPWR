@@ -162,7 +162,7 @@ machine on the LAN and point the plug at it:
 
 ```
 pip install websockets
-python tools/fake_moonraker.py
+python tools/fakermoonyraker.py
 ```
 
 Type `print`, `pause`, `bed 60`, `shutdown` and so on to drive it; the commands
@@ -177,7 +177,7 @@ are listed at the top of the file.
 | `components/dp_relay/` | Mains + USB1 outputs, safe boot state, restore policy |
 | `components/dp_portal/` | Product API v2, stock-compatible routes, safety guards, `/power` |
 | `components/dp_printer/` | Printer source selection (none / Moonraker / Bambu) and one status for all |
-| `tools/` | `fake_moonraker.py`, for testing the Klipper source without a printer |
+| `tools/` | `fakermoonyraker.py`, a fake Moonraker for testing the Klipper source without a printer |
 | `analysis/` | Static-analysis tooling for the stock firmware, and the backup verifier |
 
 ## Documentation
