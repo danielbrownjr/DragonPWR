@@ -423,16 +423,28 @@ static esp_err_t stock_set_post(httpd_req_t *req)
     }
     bool value = false;
     bool touched = false;
+    // First failure wins. Both outputs are still attempted, as stock would,
+    // but a client is never told "ok" about a switch that did not happen.
+    esp_err_t err = ESP_OK;
     if (form_flag(body, "power", &value)) {
-        dp_relay_set(DP_OUTPUT_MAINS, value);
+        esp_err_t e = dp_relay_set(DP_OUTPUT_MAINS, value);
+        if (err == ESP_OK) {
+            err = e;
+        }
         touched = true;
     }
     if (form_flag(body, "usb", &value)) {
-        dp_relay_set(DP_OUTPUT_USB1, value);
+        esp_err_t e = dp_relay_set(DP_OUTPUT_USB1, value);
+        if (err == ESP_OK) {
+            err = e;
+        }
         touched = true;
     }
     if (!touched) {
         return send_error(req, "400 Bad Request", "no recognised parameter");
+    }
+    if (err != ESP_OK) {
+        return send_error(req, "500 Internal Server Error", esp_err_to_name(err));
     }
     httpd_resp_set_type(req, "text/plain");
     return httpd_resp_sendstr(req, "ok");
