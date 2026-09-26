@@ -136,7 +136,9 @@ browser."
 - [x] `dp_portal`'s `authorize` now gates `/api/v2/command` and the new
       `/api/v2/token` behind the family's `X-Dragon-Auth` / `X-DragonBreath-Auth`
       control-token scheme (presence-only until a token is set, exact match
-      after). Stock-compatible `/set` stays open on purpose, for HA-Panda-PWR.
+      after). Stock `/set` has its own gate so HA-Panda-PWR keeps working: an
+      Origin check (refuses cross-site browser posts) until a token is set,
+      the token after
       No dedicated dc_ui settings card yet (that surface is dragonbreath-only
       today) — set/clear the token directly against `/api/v2/token` until one
       lands

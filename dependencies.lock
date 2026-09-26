@@ -1,6 +1,6 @@
 dependencies:
   dc_evlog:
-    component_hash: bd299b5eb1ea5c7898e37fa34387f7951de3a7dfeb5975c63f222899e527cb75
+    component_hash: 994802a33a1a3b0124480a969fbe9a1fc294d72254b233a69cd7456fa9b52825
     dependencies:
     - name: idf
       version: '>=5.3'
@@ -10,7 +10,7 @@ dependencies:
       type: git
     version: 8d5a61de8544a5b82cc3c6d9c7dc593ce06bb8bd
   dc_portal:
-    component_hash: 44ade1cd873784004da6b2ea2994c9559be7156e5a15b070b161fd3bd5c37d84
+    component_hash: fe296ee35d0967a81daf477591125832421f499fa0eba312e45454ac99ab7079
     dependencies:
     - name: idf
       version: '>=5.3'
@@ -20,7 +20,7 @@ dependencies:
       type: git
     version: 8d5a61de8544a5b82cc3c6d9c7dc593ce06bb8bd
   dc_ui:
-    component_hash: ca14b41ee4ec39a8fa8a20e108b134e144a32b99d3e559ba608c4ace0409e8e4
+    component_hash: c18c6a1838670ca906b8efbf54b48e3d6640c14e9dd127d640392dc7df1a6348
     dependencies:
     - name: idf
       version: '>=5.3'
@@ -30,7 +30,7 @@ dependencies:
       type: git
     version: 8d5a61de8544a5b82cc3c6d9c7dc593ce06bb8bd
   dc_wifi:
-    component_hash: 6a539e7b6d36677e412f736838ed6613325f2a4fc49c0ec53dd59543bd9e777e
+    component_hash: b2ce5eb0f997c23db0c4140a9d3d7653a0e5a4c8b571119fbb4c7c0e10238b17
     dependencies:
     - name: idf
       version: '>=5.3'
