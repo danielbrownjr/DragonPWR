@@ -71,7 +71,8 @@ footer a{ color: var(--primary); }
 
   <p id="msg" role="status" aria-live="polite"></p>
   <footer>After a power cut: <span id="restore">--</span> ·
-    <a href="/">Settings &amp; setup</a></footer>
+    <a href="/">Settings &amp; setup</a><br>
+    Memory: <span id="heap">--</span></footer>
 </main>
 <script>
 (function(){
@@ -98,6 +99,10 @@ footer a{ color: var(--primary); }
     });
     var names = { off: 'stays off', on: 'switches on', last: 'restores last state' };
     $('restore').textContent = names[state.restore] || state.restore || '--';
+    var h = state.heap;
+    function kb(n){ return Math.round(n / 1024) + ' KB'; }
+    $('heap').textContent = h ? kb(h.free) + ' free · lowest ' + kb(h.min_free) +
+      ' · largest block ' + kb(h.largest_block) : '--';
   }
 
   function poll(){

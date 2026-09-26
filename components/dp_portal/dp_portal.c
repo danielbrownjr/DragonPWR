@@ -12,6 +12,7 @@
 #include "dc_wifi.h"
 #include "dp_relay.h"
 #include "esp_app_desc.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_ota_ops.h"
@@ -308,6 +309,17 @@ static esp_err_t state_get(httpd_req_t *req)
     // zeroed so a client can tell "not implemented" from "measured zero".
     cJSON_AddNullToObject(root, "meter");
     cJSON_AddNullToObject(root, "printer");
+
+    // Headroom for whatever comes next - a TLS printer client is the obvious
+    // candidate. largest_block matters as much as free: mbedTLS wants
+    // contiguous buffers, and a fragmented heap fails a handshake with plenty
+    // free in total. min_free is the low-water mark since boot.
+    cJSON *heap = cJSON_AddObjectToObject(root, "heap");
+    cJSON_AddNumberToObject(heap, "free", heap_caps_get_free_size(MALLOC_CAP_8BIT));
+    cJSON_AddNumberToObject(heap, "min_free",
+                            heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT));
+    cJSON_AddNumberToObject(heap, "largest_block",
+                            heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
     return send_json(req, root);
 }
 
