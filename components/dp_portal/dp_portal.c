@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "dp_portal.h"
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,6 +12,8 @@
 #include "dp_relay.h"
 #include "esp_app_desc.h"
 #include "esp_log.h"
+#include "esp_mac.h"
+#include "esp_random.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 
@@ -21,6 +24,11 @@ static const char *TAG = "dp_portal";
 
 // The family shares one NVS namespace, same as dp_relay and the stock firmware.
 #define DP_NVS_NAMESPACE "app_nvs"
+
+// Fixed per boot: lets a client tell a reboot from a reconnect.
+static char s_boot_id[9];
+// Base MAC as 12 hex digits, so the same unit reads the same across reflashes.
+static char s_device_id[13];
 
 // ---------------------------------------------------------------- helpers
 
@@ -254,6 +262,8 @@ static esp_err_t info_get(httpd_req_t *req)
     // and the only on-screen way to tell an OTA stuck); "version" stays for
     // anything already reading it.
     cJSON_AddStringToObject(root, "firmware", app ? app->version : "unknown");
+    cJSON_AddStringToObject(root, "device_id", s_device_id);
+    cJSON_AddStringToObject(root, "boot_id", s_boot_id);
 
     // The shared SPA gates optional screens on these. There is no dragonpwr
     // surface in dc_ui yet, so today this only selects the common setup and
@@ -282,6 +292,35 @@ static esp_err_t state_get(httpd_req_t *req)
     // zeroed so a client can tell "not implemented" from "measured zero".
     cJSON_AddNullToObject(root, "meter");
     cJSON_AddNullToObject(root, "printer");
+    return send_json(req, root);
+}
+
+// dc_ui's event log card. Same body as dc_portal's /api/v1/system/logs, but
+// readable without a token like /api/v2/state: the card fetches it with no
+// auth header, and the log holds no secrets - token changes are logged only as
+// "set" or "cleared".
+static esp_err_t logs_get(httpd_req_t *req)
+{
+    // ~6 KiB: too big for the httpd task's stack, so take it from the heap.
+    dc_evlog_entry_t *entries = calloc(DC_EVLOG_MAX_ENTRIES, sizeof(*entries));
+    if (!entries) {
+        return send_error(req, "500 Internal Server Error", "out of memory");
+    }
+    const size_t count = dc_evlog_snapshot(entries, DC_EVLOG_MAX_ENTRIES);
+    cJSON *root = cJSON_CreateObject();
+    cJSON *list = cJSON_AddArrayToObject(root, "entries");
+    if (!list) {
+        cJSON_Delete(root);
+        free(entries);
+        return send_error(req, "500 Internal Server Error", "out of memory");
+    }
+    for (size_t i = 0; i < count; i++) {
+        cJSON *entry = cJSON_CreateObject();
+        cJSON_AddNumberToObject(entry, "ms", entries[i].ms);
+        cJSON_AddStringToObject(entry, "text", entries[i].text);
+        cJSON_AddItemToArray(list, entry);
+    }
+    free(entries);
     return send_json(req, root);
 }
 
@@ -514,6 +553,7 @@ static esp_err_t factory_reset(void *ctx)
 static const httpd_uri_t ROUTES[] = {
     { .uri = "/api/v2/info",       .method = HTTP_GET,  .handler = info_get },
     { .uri = "/api/v2/state",      .method = HTTP_GET,  .handler = state_get },
+    { .uri = "/api/v2/logs",       .method = HTTP_GET,  .handler = logs_get },
     { .uri = "/api/v2/command",    .method = HTTP_POST, .handler = command_post },
     { .uri = "/api/v2/token",      .method = HTTP_POST, .handler = token_post },
     // Stock compatibility.
@@ -523,6 +563,14 @@ static const httpd_uri_t ROUTES[] = {
 
 esp_err_t dp_portal_start(void)
 {
+    uint8_t mac[6] = {0};
+    esp_efuse_mac_get_default(mac);
+    snprintf(s_device_id, sizeof(s_device_id), "%02x%02x%02x%02x%02x%02x",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    // Wi-Fi is already up (app_main starts it first), so esp_random() is
+    // drawing on the RF noise source here, not the boot-time fallback.
+    snprintf(s_boot_id, sizeof(s_boot_id), "%08" PRIx32, esp_random());
+
     const dc_portal_config_t config = {
         .product             = DP_PRODUCT,
         .display_name        = DP_DISPLAY_NAME,
