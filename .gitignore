@@ -2,6 +2,9 @@
 analysis/stock/
 analysis/out/
 
+# Full-flash backups contain the NVS partition (Wi-Fi credentials). Never commit.
+stock-*-backup.bin
+
 # ESP-IDF build output. dependencies.lock is deliberately NOT ignored:
 # dragon-core is pinned by tag, and the lock is what makes that reproducible.
 build/

@@ -35,7 +35,7 @@ Flash, not ideas.
 | | |
 |---|---|
 | App slot (stock partition table) | **1280 K** |
-| **DragonPWR Phase 1, measured** | **778 K — 39 % of the slot free** |
+| **DragonPWR Phase 1, measured** | **768 K — 40 % of the slot free** |
 | DragonStatus v1.0.0 OTA image (ESP32-C3) | 1.15 MB |
 | DragonVent v0.5.9 OTA image (ESP32) | 1.20 MB |
 
@@ -74,17 +74,35 @@ usable without it.
 Everything in [HARDWARE_ANALYSIS.md](HARDWARE_ANALYSIS.md) is derived from the
 stock binary and has never been checked against a board.
 
-- [ ] Back up the stock flash over USB **before anything else** — BTT publishes
-      the app images but not a full flash dump, so this is the only way back
-- [ ] Confirm GPIO7 drives the relay, and that it is active **low**
-- [ ] Confirm GPIO18 switches USB1, active high
+- [x] Back up the stock flash over USB **before anything else** — BTT publishes
+      the app images but not a full flash dump, so this is the only way back.
+      Verified restorable: `app0`/`app1` both read as `panda_pwr 08a40b2-dirty`,
+      IDF v5.1.1-dirty, built Jan 13 2025 — matches the build already analysed
+      in HARDWARE_ANALYSIS.md
+- [x] Confirm GPIO7 drives the relay, and that it is active **low** —
+      physically confirmed twice: an audible click at safe-boot re-drive
+      (09-09), then a deliberate on/off toggle over `/set` (09-14). See
+      docs/BENCH_NOTES.md.
+- [x] Confirm GPIO18 switches USB1, active high — confirmed the same way,
+      deliberate on/off toggle over `/set` (09-14). See docs/BENCH_NOTES.md.
 - [ ] Identify GPIO6 physically. The handling is edge-triggered-toggle, but the
       manual documents only the Bind button and no photo shows a second control,
       so what drives this pin is genuinely unknown
 - [ ] Photograph the metering IC and match it against the register map
-- [ ] Determine whether the relay is latching or momentary
-- [ ] Check whether the stock web UI's OTA accepts a foreign image; if it
-      validates the project name, first install needs serial
+- [x] Determine whether the relay is latching or momentary — 5 on/off cycles
+      driven 1.5 s apart over `/api/v2/command`; clicks landed at that same
+      ~1.5 s cadence (not ~3 s), i.e. **both** the on and the off edge
+      clicked, not just one. Consistent with a standard, continuously-driven
+      relay, not a latching/bistable one. Ear-timed, not click-counted — see
+      docs/BENCH_NOTES.md for the caveat
+- [x] Check whether the stock web UI's OTA accepts a foreign image — moot:
+      stock has **no local update surface to test in the first place**. No
+      upload-shaped HTTP route exists anywhere in the app0 image (only `/set`
+      and `/update_ele_data`), and restoring the verified stock backup
+      produced no reachable AP even with NVS wiped — stock apparently has no
+      AP-provisioning fallback the way `dc_wifi` does. First install needs
+      serial; that was never a DragonPWR limitation to begin with. See
+      docs/BENCH_NOTES.md
 
 The first relay test must happen with the mains side disconnected.
 
@@ -99,7 +117,14 @@ browser."
       `gpio_get_level` the way stock does
 - [x] Power-loss restore policy — off / on / last state, persisted to NVS,
       defaulting to **off**
-- [ ] `dp_button` on GPIO10, and the GPIO6 maintained-contact input
+- [x] `dp_button` on GPIO10 (confirmed physically: audible relay click, one
+      per press) drives `dp_relay_set()` directly, so the Phase 2 interlock
+      protects it too once it lands there. GPIO6 is polled and its
+      transitions are logged, but deliberately **not** wired to the relay —
+      no pull resistor plus unconfirmed physical identity means a floating
+      pin can produce a spurious "transition," and a bench session caught
+      exactly that: mains switched on with nobody touching anything. See
+      docs/BENCH_NOTES.md
 - [x] Wi-Fi, captive portal, mDNS, OTA, factory reset — all inherited from
       `dc_wifi` + `dc_portal`
 - [x] `/api/v2/info` + `/api/v2/state` + `/api/v2/command`
@@ -108,8 +133,13 @@ browser."
       across the firmware swap
 - [x] Byte-identical partition table, verified against the stock binary, so install-over-stock stays possible
 - [x] Record the real image size and update the budget table above
-- [ ] `dp_portal`'s `authorize` is currently open — wire up the family control
-      token before this is exposed to anything but a trusted LAN
+- [x] `dp_portal`'s `authorize` now gates `/api/v2/command` and the new
+      `/api/v2/token` behind the family's `X-Dragon-Auth` / `X-DragonBreath-Auth`
+      control-token scheme (presence-only until a token is set, exact match
+      after). Stock-compatible `/set` stays open on purpose, for HA-Panda-PWR.
+      No dedicated dc_ui settings card yet (that surface is dragonbreath-only
+      today) — set/clear the token directly against `/api/v2/token` until one
+      lands
 
 No meter and no printer integration in this phase. The point is a device that
 is safe to leave plugged in.

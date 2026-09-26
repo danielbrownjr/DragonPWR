@@ -225,18 +225,26 @@ the first milestone.
 
 1. **Which metering IC?** A board photo. The register map above then either
    matches a datasheet or it does not.
-2. **Is the relay latching or momentary?** Not decidable from the binary.
-   Determines power-loss behaviour and whether "off" is a safe boot default.
-   Active-low drive plus a maintained-contact input on GPIO6 hints at a
-   conventional (non-latching) relay held on by the pin, but that is a guess.
-3. **What is GPIO6 physically?** The handling says maintained-contact switch;
-   confirm by tracing it or by watching it while working the enclosure controls.
+2. ~~Is the relay latching or momentary?~~ **Resolved on real hardware** (see
+   docs/BENCH_NOTES.md, 2026-09-14): 5 on/off cycles 1.5 s apart clicked at
+   that same cadence, not ~3 s — both edges click, so it's a standard,
+   continuously-driven relay, not latching/bistable.
+3. **What is GPIO6 physically?** Still unconfirmed — the case can't be opened
+   non-destructively on this unit, so tracing it isn't possible. What IS now
+   known: it has no pull resistor and, left unconnected, floats and produces
+   spurious stable-looking transitions — a bench session caught DragonPWR's
+   own GPIO6 handling switching mains on with nobody touching anything (see
+   docs/BENCH_NOTES.md). `dp_button` no longer acts on it as a result.
 4. **What are the remaining fields of the button descriptor at `0x3fcad1ec`?**
    BTT documents 3 s (pair) and 8 s (factory reset); confirm against the binary
    rather than trusting the wiki.
-5. **Does the stock web UI's OTA accept a foreign image?** If it does, DragonPWR
-   installs over stock from a browser like DragonVent and DragonStatus do. If it
-   validates the project name, the first install needs serial.
+5. ~~Does the stock web UI's OTA accept a foreign image?~~ **Moot, resolved
+   2026-09-14**: stock has no local update surface at all to test. No
+   upload-shaped HTTP route exists in the app0 image (`/set` and
+   `/update_ele_data` are the only two), and restoring the verified stock
+   backup produced no reachable AP even with NVS erased — no AP-provisioning
+   fallback like `dc_wifi`'s. First install needs serial regardless of
+   anything DragonPWR does. See docs/BENCH_NOTES.md.
 
 ## Tools
 

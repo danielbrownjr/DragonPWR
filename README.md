@@ -69,12 +69,30 @@ python -m esptool --chip esp32c2 -p COM5 -b 460800 write_flash 0x0 stock-panda-p
 
 ## Building
 
-Requires ESP-IDF 5.3 or newer (built and verified against v5.3.1) and a host
+Requires ESP-IDF 5.3 or newer (built and verified against v5.3.5) and a host
 `gzip`, which `dc_ui` uses to make the embedded SPA reproducible.
+
+On the Windows dev machine, ESP-IDF v5.3.5 lives at `C:\esp\v5.3.5\esp-idf`
+(not on `PATH` by default — a separate install from whatever the Espressif
+installer put under `C:\Espressif`). Source its environment once per shell
+before running `idf.py`:
+
+```powershell
+cd C:\esp\v5.3.5\esp-idf
+. .\export.ps1
+cd C:\Users\danie\Coding\DragonPWR
+```
 
 ```bash
 idf.py -D IDF_TARGET=esp32c2 build
 ```
+
+To flash and watch the console over the CH340 bridge (shows up as a COM
+port, e.g. `COM6`): `idf.py -p COM6 flash`. The console UART on this board
+is subject to a sporadic hardware quirk — see docs/BENCH_NOTES.md,
+2026-09-14 session — where it sometimes comes up at 74880 baud instead of
+the configured 115200; retry the reset or open the monitor at 74880 if a
+log looks like garbage.
 
 The current Phase 1 image is 778 K against a 1280 K app slot. `dependencies.lock`
 is committed: `dragon-core` is pinned by tag and the lock is what makes that

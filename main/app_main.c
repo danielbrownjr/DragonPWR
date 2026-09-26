@@ -9,13 +9,43 @@
 #include "dc_evlog.h"
 #include "dc_wifi.h"
 #include "dp_board.h"
+#include "dp_button.h"
 #include "dp_portal.h"
 #include "dp_relay.h"
+#include "driver/uart.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
 
 static const char *TAG = "dragonpwr";
+
+// This board's ESP8684 module has a 26MHz crystal (confirmed via esptool's
+// hardware-measured chip detection, and via esp_clk_tree forcing a fresh
+// calibration: both read 26,000,000 Hz exactly). CONFIG_XTAL_FREQ is set to
+// match (sdkconfig.defaults) - required for the Wi-Fi radio to transmit on
+// the right frequency at all, and verified fixed: see docs/BENCH_NOTES.md,
+// 2026-09-14 session.
+//
+// The console UART is a separate, known ESP32/ESP32-C2 quirk on top of
+// that: the ROM/2nd-stage-bootloader path that sets its baud divisor
+// (bootloader_support/src/bootloader_console.c) sometimes samples the
+// 26MHz crystal before its startup transient has settled, so the console
+// intermittently comes up at 74880 baud instead of the configured 115200.
+// This is sporadic and hardware-induced, not something CONFIG_XTAL_FREQ or
+// boot ordering can deterministically fix - Espressif confirmed the same
+// symptom and the same workaround upstream:
+// https://github.com/espressif/esp-idf/issues/2518
+// Re-applying the baud rate here narrows the window but does not
+// guarantee it; if a bench session's log looks like garbage, retry the
+// reset, or fall back to opening the monitor at 74880 baud.
+static void reapply_console_baud(void)
+{
+    esp_err_t err = uart_set_baudrate(CONFIG_ESP_CONSOLE_UART_NUM,
+                                       CONFIG_ESP_CONSOLE_UART_BAUDRATE);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "console baud re-apply failed: %s", esp_err_to_name(err));
+    }
+}
 
 static esp_err_t init_nvs(void)
 {
@@ -40,6 +70,7 @@ static esp_err_t configure_network_identity(void)
 
 void app_main(void)
 {
+    reapply_console_baud();
     ESP_LOGI(TAG, "DragonPWR booting");
 
     dc_evlog_console_init();
@@ -53,6 +84,7 @@ void app_main(void)
     // as short as the firmware can make it, and nothing above depends on the
     // network being up.
     ESP_ERROR_CHECK(dp_relay_init());
+    ESP_ERROR_CHECK(dp_button_init());
 
     ESP_ERROR_CHECK(configure_network_identity());
     ESP_ERROR_CHECK(dc_wifi_start());

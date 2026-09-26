@@ -11,11 +11,16 @@
 #include "dp_relay.h"
 #include "esp_app_desc.h"
 #include "esp_log.h"
+#include "nvs.h"
+#include "nvs_flash.h"
 
 static const char *TAG = "dp_portal";
 
 #define DP_PRODUCT      "dragonpwr"
 #define DP_DISPLAY_NAME "DragonPWR"
+
+// The family shares one NVS namespace, same as dp_relay and the stock firmware.
+#define DP_NVS_NAMESPACE "app_nvs"
 
 // ---------------------------------------------------------------- helpers
 
@@ -61,6 +66,81 @@ static int recv_body(httpd_req_t *req, char *buf, size_t size)
     return total;
 }
 
+// --------------------------------------------------------- control token
+// Matches the family's db_tok scheme (see dc_ui's dcAuthHeaders/'web' sentinel
+// and managed_components/dc_portal's /console page): the browser always sends
+// a non-empty X-Dragon-Auth / X-DragonBreath-Auth header, defaulting to the
+// 'web' CSRF sentinel when no real token is configured. A cross-origin <form>
+// POST cannot set custom headers, so requiring *some* value here defeats CSRF
+// even before a token is set; once one is set, only an exact match passes.
+//
+// Only DragonPWR's own /api/v2/* mutations are gated - the stock-compatible
+// /set route is deliberately left open so HA-Panda-PWR and other integrations
+// written against the stock (unauthenticated) API keep working unless the
+// owner opts into a token.
+
+#define DP_NVS_TOKEN "ctrl_tok"
+
+static esp_err_t token_store(const char *token)
+{
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(DP_NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) {
+        return err;
+    }
+    if (token[0] == '\0') {
+        err = nvs_erase_key(handle, DP_NVS_TOKEN);
+        if (err == ESP_ERR_NVS_NOT_FOUND) {
+            err = ESP_OK;
+        }
+    } else {
+        err = nvs_set_str(handle, DP_NVS_TOKEN, token);
+    }
+    if (err == ESP_OK) {
+        err = nvs_commit(handle);
+    }
+    nvs_close(handle);
+    return err;
+}
+
+// Returns the stored token's length, or 0 (out left empty) if none is set.
+static size_t token_load(char *out, size_t out_size)
+{
+    nvs_handle_t handle;
+    if (nvs_open(DP_NVS_NAMESPACE, NVS_READONLY, &handle) != ESP_OK) {
+        out[0] = '\0';
+        return 0;
+    }
+    size_t len = out_size;
+    esp_err_t err = nvs_get_str(handle, DP_NVS_TOKEN, out, &len);
+    nvs_close(handle);
+    if (err != ESP_OK) {
+        out[0] = '\0';
+        return 0;
+    }
+    return strlen(out);
+}
+
+static bool auth_header(httpd_req_t *req, char *out, size_t out_size)
+{
+    return (httpd_req_get_hdr_value_str(req, "X-Dragon-Auth", out, out_size) == ESP_OK && out[0]) ||
+           (httpd_req_get_hdr_value_str(req, "X-DragonBreath-Auth", out, out_size) == ESP_OK && out[0]);
+}
+
+static bool authorize(httpd_req_t *req, void *ctx)
+{
+    (void)ctx;
+    char header[65] = {0};
+    if (!auth_header(req, header, sizeof(header))) {
+        return false;
+    }
+    char stored[65] = {0};
+    if (token_load(stored, sizeof(stored)) == 0) {
+        return true;   // presence-only tier: no token configured yet
+    }
+    return strcmp(header, stored) == 0;
+}
+
 // ------------------------------------------------------------ product API
 
 static esp_err_t info_get(httpd_req_t *req)
@@ -103,6 +183,9 @@ static esp_err_t state_get(httpd_req_t *req)
 
 static esp_err_t command_post(httpd_req_t *req)
 {
+    if (!authorize(req, NULL)) {
+        return send_error(req, "403 Forbidden", "authorization required");
+    }
     char body[128];
     if (recv_body(req, body, sizeof(body)) < 0) {
         return send_error(req, "400 Bad Request", "body required");
@@ -198,6 +281,37 @@ static esp_err_t stock_state_get(httpd_req_t *req)
     return send_json(req, root);
 }
 
+static esp_err_t token_post(httpd_req_t *req)
+{
+    if (!authorize(req, NULL)) {
+        return send_error(req, "403 Forbidden", "authorization required");
+    }
+    char body[128];
+    if (recv_body(req, body, sizeof(body)) < 0) {
+        return send_error(req, "400 Bad Request", "body required");
+    }
+    cJSON *root = cJSON_Parse(body);
+    if (!root) {
+        return send_error(req, "400 Bad Request", "invalid JSON");
+    }
+    const cJSON *token = cJSON_GetObjectItemCaseSensitive(root, "token");
+    if (!cJSON_IsString(token) || strlen(token->valuestring) > 64) {
+        cJSON_Delete(root);
+        return send_error(req, "400 Bad Request",
+                          "token (string, <=64 chars; empty clears it) is required");
+    }
+    esp_err_t err = token_store(token->valuestring);
+    const bool token_set = token->valuestring[0] != '\0';
+    cJSON_Delete(root);
+    if (err != ESP_OK) {
+        return send_error(req, "500 Internal Server Error", esp_err_to_name(err));
+    }
+    cJSON *reply = cJSON_CreateObject();
+    cJSON_AddBoolToObject(reply, "ok", true);
+    cJSON_AddBoolToObject(reply, "token_set", token_set);
+    return send_json(req, reply);
+}
+
 // ------------------------------------------------------ dc_portal callbacks
 
 static cJSON *describe_product(void *ctx)
@@ -258,16 +372,6 @@ static esp_err_t apply_product(const cJSON *values, void *ctx,
     return ESP_OK;
 }
 
-static bool authorize(httpd_req_t *req, void *ctx)
-{
-    (void)req;
-    (void)ctx;
-    // TODO(phase 1): control-token gate, matching the family's db_tok scheme.
-    // Open for now, which is why this firmware is not yet fit to expose beyond
-    // a trusted LAN.
-    return true;
-}
-
 static esp_err_t guard_operation(dc_portal_operation_t operation, void *ctx,
                                  char *message, size_t message_size)
 {
@@ -290,7 +394,9 @@ static esp_err_t guard_operation(dc_portal_operation_t operation, void *ctx,
 static esp_err_t factory_reset(void *ctx)
 {
     (void)ctx;
-    return dp_relay_clear();
+    esp_err_t token_err = token_store("");
+    esp_err_t relay_err = dp_relay_clear();
+    return relay_err != ESP_OK ? relay_err : token_err;
 }
 
 // ------------------------------------------------------------------ routes
@@ -299,6 +405,7 @@ static const httpd_uri_t ROUTES[] = {
     { .uri = "/api/v2/info",       .method = HTTP_GET,  .handler = info_get },
     { .uri = "/api/v2/state",      .method = HTTP_GET,  .handler = state_get },
     { .uri = "/api/v2/command",    .method = HTTP_POST, .handler = command_post },
+    { .uri = "/api/v2/token",      .method = HTTP_POST, .handler = token_post },
     // Stock compatibility.
     { .uri = "/set",               .method = HTTP_POST, .handler = stock_set_post },
     { .uri = "/update_ele_data",   .method = HTTP_GET,  .handler = stock_state_get },
