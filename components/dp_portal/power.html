@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DragonPWR</title>
+<!--
+  Stopgap control page, served at /power. dc_ui has no DragonPWR surface yet
+  (docs/ROADMAP.md), so the family SPA shows another product's dashboard and
+  cannot switch the outputs. Delete this once dc_ui carries a dragonpwr view.
+
+  Same colour tokens as dc_ui, same stored theme (db_theme) and the same
+  control-token transport (db_tok, X-Dragon-Auth + legacy header, prompt on
+  403), so it behaves like the rest of the family.
+-->
+<style>
+:root{
+  color-scheme: light dark;
+  --background: light-dark(rgb(255 255 255), rgb(24 24 24));
+  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
+  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
+  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
+  --muted-foreground: light-dark(rgb(26 28 31 / 49.4%), rgb(255 255 255 / 49.8%));
+  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
+  --ok: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
+  --font-sans: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+}
+:root[data-theme="light"]{ color-scheme: light; }
+:root[data-theme="dark"]{ color-scheme: dark; }
+*{ box-sizing: border-box; }
+body{ margin: 0; background: var(--background); color: var(--foreground);
+  font: 15px/1.4 var(--font-sans); }
+main{ max-width: 480px; margin: 0 auto; padding: 24px 16px; }
+h1{ font-size: 20px; margin: 0 0 4px; }
+.sub{ color: var(--muted-foreground); margin: 0 0 20px; font-size: 13px; }
+.card{ background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+  padding: 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px; }
+.card .name{ flex: 1; }
+.card .name b{ display: block; font-size: 16px; }
+.card .name small{ color: var(--muted-foreground); }
+.dot{ width: 12px; height: 12px; border-radius: 50%; background: var(--muted-foreground); flex: none; }
+.on .dot{ background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+button{ font: inherit; font-weight: 600; min-width: 84px; padding: 10px 16px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--card); color: var(--foreground); cursor: pointer; }
+button.go{ background: var(--primary); color: var(--primary-foreground); border-color: transparent; }
+button.stop{ background: var(--destructive); color: #fff; border-color: transparent; }
+button:disabled{ opacity: .5; cursor: default; }
+#msg{ min-height: 1.4em; font-size: 13px; margin: 8px 0 0; }
+#msg.err{ color: var(--destructive); }
+footer{ margin-top: 20px; font-size: 13px; color: var(--muted-foreground); }
+footer a{ color: var(--primary); }
+</style>
+</head>
+<body>
+<main>
+  <h1>DragonPWR</h1>
+  <p class="sub" id="conn">Connecting…</p>
+
+  <div class="card" id="c-mains">
+    <span class="dot"></span>
+    <span class="name"><b>Outlet</b><small id="s-mains">--</small></span>
+    <button type="button" id="b-mains" disabled>--</button>
+  </div>
+  <div class="card" id="c-usb1">
+    <span class="dot"></span>
+    <span class="name"><b>USB 1</b><small id="s-usb1">--</small></span>
+    <button type="button" id="b-usb1" disabled>--</button>
+  </div>
+
+  <p id="msg" role="status" aria-live="polite"></p>
+  <footer>After a power cut: <span id="restore">--</span> ·
+    <a href="/">Settings &amp; setup</a></footer>
+</main>
+<script>
+(function(){
+  var t = null;
+  try{ t = localStorage.getItem('db_theme'); }catch(e){}
+  if(t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+
+  function $(id){ return document.getElementById(id); }
+  function tok(){ try{ return localStorage.getItem('db_tok') || 'web'; }catch(e){ return 'web'; } }
+  function msg(text, err){ var m = $('msg'); m.textContent = text || ''; m.className = err ? 'err' : ''; }
+
+  var state = null, busy = false;
+
+  function render(){
+    if(!state || !state.outputs) return;
+    [['mains', 'Outlet'], ['usb1', 'USB 1']].forEach(function(o){
+      var on = !!state.outputs[o[0]];
+      $('c-' + o[0]).className = 'card' + (on ? ' on' : '');
+      $('s-' + o[0]).textContent = on ? 'On' : 'Off';
+      var b = $('b-' + o[0]);
+      b.textContent = on ? 'Turn off' : 'Turn on';
+      b.className = on ? 'stop' : 'go';
+      b.disabled = busy;
+    });
+    var names = { off: 'stays off', on: 'switches on', last: 'restores last state' };
+    $('restore').textContent = names[state.restore] || state.restore || '--';
+  }
+
+  function poll(){
+    fetch('/api/v2/state', { cache: 'no-store' })
+      .then(function(r){ if(!r.ok) throw 0; return r.json(); })
+      .then(function(s){ state = s; $('conn').textContent = 'Connected'; render(); })
+      .catch(function(){ $('conn').textContent = 'Not connected — retrying…'; })
+      .then(function(){ setTimeout(poll, 2000); });
+  }
+
+  function send(output, on, retried){
+    var t = tok();
+    return fetch('/api/v2/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Dragon-Auth': t, 'X-DragonBreath-Auth': t },
+      body: JSON.stringify({ output: output, on: on })
+    }).then(function(r){
+      return r.json().catch(function(){ return {}; }).then(function(j){
+        if(r.status === 403 && !retried){
+          try{ localStorage.removeItem('db_tok'); }catch(e){}
+          var entered = prompt('Control token');
+          if(entered){
+            try{ localStorage.setItem('db_tok', entered); }catch(e){}
+            return send(output, on, true);
+          }
+        }
+        if(!r.ok) throw j;
+        return j;
+      });
+    });
+  }
+
+  function toggle(output){
+    if(!state || busy) return;
+    var on = !state.outputs[output];
+    // Cutting mains is the one action here that can hurt a print.
+    if(output === 'mains' && !on &&
+       !confirm('Turn the outlet off? This cuts power to whatever is plugged in.')) return;
+    busy = true; render(); msg('');
+    send(output, on)
+      .then(function(s){ if(s && s.outputs) state = s; })
+      .catch(function(j){ msg('Failed: ' + ((j && (j.message || j.error)) || 'no response'), true); })
+      .then(function(){ busy = false; render(); });
+  }
+
+  $('b-mains').addEventListener('click', function(){ toggle('mains'); });
+  $('b-usb1').addEventListener('click', function(){ toggle('usb1'); });
+  poll();
+})();
+</script>
+</body>
+</html>

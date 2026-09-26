@@ -570,6 +570,21 @@ static esp_err_t factory_reset(void *ctx)
     return relay_err != ESP_OK ? relay_err : token_err;
 }
 
+// -------------------------------------------------------------- /power
+// Stopgap control page (components/dp_portal/power.html): dc_ui has no
+// DragonPWR surface yet, so nothing in the SPA can switch the outputs. The page
+// itself is static and open; the command it POSTs is token-gated as usual.
+
+extern const char power_html_start[] asm("_binary_power_html_start");
+
+static esp_err_t power_page_get(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "text/html; charset=utf-8");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    // EMBED_TXTFILES NUL-terminates the blob.
+    return httpd_resp_sendstr(req, power_html_start);
+}
+
 // ------------------------------------------------------ maintenance routes
 // The routes dc_ui's Maintenance card calls. They are DragonBreath's contract;
 // DragonPWR served none of them, so its Restart, Factory reset and Boot
@@ -679,6 +694,7 @@ static esp_err_t boot_inactive_post(httpd_req_t *req)
 // ------------------------------------------------------------------ routes
 
 static const httpd_uri_t ROUTES[] = {
+    { .uri = "/power",             .method = HTTP_GET,  .handler = power_page_get },
     { .uri = "/api/v2/info",       .method = HTTP_GET,  .handler = info_get },
     { .uri = "/api/v2/state",      .method = HTTP_GET,  .handler = state_get },
     { .uri = "/api/v2/logs",       .method = HTTP_GET,  .handler = logs_get },
