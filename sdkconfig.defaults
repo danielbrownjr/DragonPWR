@@ -57,7 +57,10 @@ CONFIG_ESP_WIFI_AMPDU_TX_ENABLED=n
 # There is no CA to verify against, so esp-tls must be allowed to skip server
 # verification; without this dc_bambu cannot connect at all. The link is
 # encrypted but not authenticated: something already on the LAN could pose as
-# the printer and see the access code. esp-tls is used by nothing else here.
+# the printer and see the access code. dc_bambu refuses to compile without
+# these, and it is compiled in every DP_VARIANT - only linked into bambu and
+# full - so they are set for all variants; where dc_bambu is not linked they
+# have no TLS connection to apply to (Moonraker is plain ws://).
 CONFIG_ESP_TLS_INSECURE=y
 CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y
 # mbedTLS for low memory: allocate record buffers only while in use, and a

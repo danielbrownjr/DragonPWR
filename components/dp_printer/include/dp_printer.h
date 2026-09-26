@@ -22,6 +22,13 @@ typedef enum {
 const char *dp_source_to_str(dp_source_t source);
 dp_source_t dp_source_from_str(const char *s);
 
+// Whether this build carries the client for a source (DP_VARIANT in the
+// top-level CMakeLists.txt). LITE is always available.
+bool dp_printer_source_available(dp_source_t source);
+
+// "lite", "moonraker", "bambu" or "full": the clients this build carries.
+const char *dp_printer_variant(void);
+
 // What was saved - may differ from what is running until the next boot.
 dp_source_t dp_printer_saved_source(void);
 esp_err_t dp_printer_set_source(dp_source_t source);

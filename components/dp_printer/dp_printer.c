@@ -4,10 +4,14 @@
 #include <math.h>
 #include <string.h>
 
-#include "dc_bambu.h"
 #include "dc_evlog.h"
-#include "dc_moonraker.h"
 #include "dc_source.h"
+#if DP_WITH_BAMBU
+#include "dc_bambu.h"
+#endif
+#if DP_WITH_MOONRAKER
+#include "dc_moonraker.h"
+#endif
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "nvs.h"
@@ -96,6 +100,28 @@ esp_err_t dp_printer_set_source(dp_source_t source)
     }
 }
 
+bool dp_printer_source_available(dp_source_t source)
+{
+    switch (source) {
+    case DP_SOURCE_LITE:      return true;
+    case DP_SOURCE_MOONRAKER: return DP_WITH_MOONRAKER;
+    case DP_SOURCE_BAMBU:     return DP_WITH_BAMBU;
+    default:                  return false;
+    }
+}
+
+const char *dp_printer_variant(void)
+{
+    if (DP_WITH_MOONRAKER && DP_WITH_BAMBU) {
+        return "full";
+    }
+    if (DP_WITH_MOONRAKER) {
+        return "moonraker";
+    }
+    return DP_WITH_BAMBU ? "bambu" : "lite";
+}
+
+#if DP_WITH_BAMBU
 static esp_err_t start_bambu(void)
 {
     const size_t free_bytes = heap_caps_get_free_size(MALLOC_CAP_8BIT);
@@ -109,6 +135,7 @@ static esp_err_t start_bambu(void)
     }
     return dc_bambu_start();
 }
+#endif
 
 esp_err_t dp_printer_start(void)
 {
@@ -116,13 +143,28 @@ esp_err_t dp_printer_start(void)
     s_note[0] = '\0';
     esp_err_t err = ESP_OK;
 
+    // A choice saved by a build that carried the client, now running on one
+    // that does not (say, a lite image OTA'd over a full one): run plug-only
+    // and say why, rather than fail. The saved choice is left as it is.
+    if (!dp_printer_source_available(s_running)) {
+        snprintf(s_note, sizeof(s_note), "%s is not in this build (%s)",
+                 dp_source_to_str(s_running), dp_printer_variant());
+        dc_evlog_add("printer source: %s", s_note);
+        s_running = DP_SOURCE_LITE;
+        return ESP_OK;
+    }
+
     switch (s_running) {
+#if DP_WITH_MOONRAKER
     case DP_SOURCE_MOONRAKER:
         err = dc_moonraker_start();
         break;
+#endif
+#if DP_WITH_BAMBU
     case DP_SOURCE_BAMBU:
         err = start_bambu();
         break;
+#endif
     default:
         break;
     }
@@ -131,6 +173,8 @@ esp_err_t dp_printer_start(void)
     if (s_running != DP_SOURCE_LITE && err != ESP_OK && !s_note[0]) {
         snprintf(s_note, sizeof(s_note), "not started: %s", esp_err_to_name(err));
     }
+    ESP_LOGI(TAG, "source %s (build %s)%s%s", dp_source_to_str(s_running),
+             dp_printer_variant(), s_note[0] ? ": " : "", s_note);
     dc_evlog_add("printer source: %s%s%s", dp_source_to_str(s_running),
                  s_note[0] ? ", " : "", s_note);
     // A printer client failing is not a reason to fail the boot: the plug is
@@ -138,6 +182,7 @@ esp_err_t dp_printer_start(void)
     return ESP_OK;
 }
 
+#if DP_WITH_MOONRAKER || DP_WITH_BAMBU
 static const char *link_str(bool configured, bool connected)
 {
     if (connected) {
@@ -145,7 +190,9 @@ static const char *link_str(bool configured, bool connected)
     }
     return configured ? "connecting" : "unconfigured";
 }
+#endif
 
+#if DP_WITH_MOONRAKER
 static const char *moonraker_state_str(dc_printer_state_t state)
 {
     switch (state) {
@@ -159,6 +206,9 @@ static const char *moonraker_state_str(dc_printer_state_t state)
     }
 }
 
+#endif
+
+#if DP_WITH_BAMBU
 static const char *bambu_state_str(dc_bambu_print_state_t state)
 {
     switch (state) {
@@ -174,6 +224,8 @@ static const char *bambu_state_str(dc_bambu_print_state_t state)
     }
 }
 
+#endif
+
 void dp_printer_get_status(dp_printer_status_t *out)
 {
     memset(out, 0, sizeof(*out));
@@ -187,6 +239,7 @@ void dp_printer_get_status(dp_printer_status_t *out)
     if (!s_started) {
         return;
     }
+#if DP_WITH_MOONRAKER
     if (s_running == DP_SOURCE_MOONRAKER) {
         dc_moonraker_status_t st;
         dc_moonraker_get_status(&st);
@@ -202,7 +255,10 @@ void dp_printer_get_status(dp_printer_status_t *out)
             out->progress = st.progress;
             strlcpy(out->filename, st.filename, sizeof(out->filename));
         }
-    } else if (s_running == DP_SOURCE_BAMBU) {
+    }
+#endif
+#if DP_WITH_BAMBU
+    if (s_running == DP_SOURCE_BAMBU) {
         dc_bambu_status_t st;
         dc_bambu_get_status(&st);
         out->connected = st.state == DC_BAMBU_SUBSCRIBED;
@@ -214,23 +270,44 @@ void dp_printer_get_status(dp_printer_status_t *out)
             out->progress = st.progress >= 0 ? st.progress : NAN;
         }
     }
+#endif
 }
 
 esp_err_t dp_printer_clear(void)
 {
-    esp_err_t err = dc_moonraker_clear_config();
+    // A client not in this build cannot clear its own keys, so do it here:
+    // a factory reset must not leave, say, a Bambu access code behind in NVS
+    // for a later full build to pick up.
+    esp_err_t err = ESP_OK;
+#if DP_WITH_MOONRAKER
+    err = dc_moonraker_clear_config();
+#endif
+#if DP_WITH_BAMBU
     const esp_err_t bambu_err = dc_bambu_clear_config();
     if (err == ESP_OK) {
         err = bambu_err;
     }
+#endif
     nvs_handle_t handle;
     if (nvs_open(DC_SOURCE_NAMESPACE, NVS_READWRITE, &handle) == ESP_OK) {
-        const esp_err_t erase = nvs_erase_key(handle, DC_SOURCE_KEY);
-        if (erase == ESP_OK) {
-            nvs_commit(handle);
-        } else if (erase != ESP_ERR_NVS_NOT_FOUND && err == ESP_OK) {
-            err = erase;
+        static const char *const KEYS[] = {
+            DC_SOURCE_KEY,
+#if !DP_WITH_MOONRAKER
+            // dc_moonraker's keys (dc_moonraker.c)
+            "mk_host", "mk_port", "mk_apikey",
+#endif
+#if !DP_WITH_BAMBU
+            // dc_bambu's keys (dc_bambu.c)
+            "bb_host", "bb_serial", "bb_code",
+#endif
+        };
+        for (size_t i = 0; i < sizeof(KEYS) / sizeof(KEYS[0]); i++) {
+            const esp_err_t erase = nvs_erase_key(handle, KEYS[i]);
+            if (erase != ESP_OK && erase != ESP_ERR_NVS_NOT_FOUND && err == ESP_OK) {
+                err = erase;
+            }
         }
+        nvs_commit(handle);
         nvs_close(handle);
     }
     return err;

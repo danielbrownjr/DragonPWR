@@ -9,9 +9,13 @@
 #include <string.h>
 
 #include "cJSON.h"
-#include "dc_bambu.h"
 #include "dc_evlog.h"
+#if DP_WITH_BAMBU
+#include "dc_bambu.h"
+#endif
+#if DP_WITH_MOONRAKER
 #include "dc_moonraker.h"
+#endif
 #include "dc_portal.h"
 #include "dc_wifi.h"
 #include "dp_printer.h"
@@ -274,6 +278,7 @@ static esp_err_t info_get(httpd_req_t *req)
     // anything already reading it.
     cJSON_AddStringToObject(root, "firmware", app ? app->version : "unknown");
     cJSON_AddStringToObject(root, "device_id", s_device_id);
+    cJSON_AddStringToObject(root, "variant", dp_printer_variant());
     cJSON_AddStringToObject(root, "boot_id", s_boot_id);
 
     // What "Boot inactive slot" would boot. dc_ui shows the button only when
@@ -577,6 +582,7 @@ static void add_option(cJSON *field, const char *value, const char *label)
     cJSON_AddItemToArray(options, option);
 }
 
+#if DP_WITH_MOONRAKER || DP_WITH_BAMBU
 // dc_ui shows a section with visible_when only while that field holds value.
 static void show_when_source(cJSON *section, const char *source)
 {
@@ -584,7 +590,9 @@ static void show_when_source(cJSON *section, const char *source)
     cJSON_AddStringToObject(when, "field", "source");
     cJSON_AddStringToObject(when, "value", source);
 }
+#endif
 
+#if DP_WITH_BAMBU
 // Secrets are never sent back to the browser. The field reads blank, and a
 // blank on save keeps what is stored (see apply_product).
 static void add_secret(cJSON *section, const char *key, const char *label,
@@ -596,6 +604,7 @@ static void add_secret(cJSON *section, const char *key, const char *label,
     cJSON_AddStringToObject(field, "placeholder",
                             stored ? "Saved - leave blank to keep" : "");
 }
+#endif
 
 static const char *source_label(dp_source_t source)
 {
@@ -629,7 +638,8 @@ static cJSON *describe_product(void *ctx)
     const dp_source_t saved = dp_printer_saved_source();
     char now[160];
     if (st.source == DP_SOURCE_LITE) {
-        snprintf(now, sizeof(now), "Running now: plug only.");
+        snprintf(now, sizeof(now), "Running now: plug only%s%s.",
+                 st.note[0] ? " - " : "", st.note);
     } else {
         snprintf(now, sizeof(now), "Running now: %s, %s%s%s.",
                  source_label(st.source), st.link,
@@ -640,16 +650,30 @@ static cJSON *describe_product(void *ctx)
         snprintf(now + len, sizeof(now) - len, " Saved: %s - restart to switch.",
                  source_label(saved));
     }
+    // Plug-only builds have nothing to choose, so no Printer section at all.
+    if (!dp_printer_source_available(DP_SOURCE_MOONRAKER) &&
+        !dp_printer_source_available(DP_SOURCE_BAMBU)) {
+        return root;
+    }
     cJSON *printer = add_section(sections, "Printer", now);
     field = add_field(printer, "source", "Printer to follow", "select",
-                      "Takes effect after a restart. Bambu is experimental: its "
-                      "encrypted connection needs more memory than this chip "
-                      "reliably has spare.");
-    cJSON_AddStringToObject(field, "value", dp_source_to_str(saved));
+                      DP_WITH_BAMBU
+                          ? "Takes effect after a restart. Bambu is experimental: "
+                            "its encrypted connection needs more memory than this "
+                            "chip reliably has spare."
+                          : "Takes effect after a restart.");
+    cJSON_AddStringToObject(field, "value",
+                            dp_printer_source_available(saved) ? dp_source_to_str(saved)
+                                                               : "lite");
     add_option(field, "lite", "None - plug only");
+#if DP_WITH_MOONRAKER
     add_option(field, "moonraker", "Klipper (Moonraker)");
+#endif
+#if DP_WITH_BAMBU
     add_option(field, "bambu", "Bambu Lab (experimental)");
+#endif
 
+#if DP_WITH_MOONRAKER
     dc_moonraker_config_t mk = { 0 };
     dc_moonraker_get_config(&mk);
     // dc_moonraker stores an API key but never sends one, so no field for it:
@@ -667,6 +691,8 @@ static cJSON *describe_product(void *ctx)
     cJSON_AddNumberToObject(field, "min", 1);
     cJSON_AddNumberToObject(field, "max", 65535);
 
+#endif
+#if DP_WITH_BAMBU
     dc_bambu_config_t bb = { 0 };
     dc_bambu_get_config(&bb);
     cJSON *bambu = add_section(sections, "Bambu Lab",
@@ -681,6 +707,7 @@ static cJSON *describe_product(void *ctx)
     cJSON_AddStringToObject(field, "value", bb.serial);
     add_secret(bambu, "bb_code", "LAN access code", bb.code[0] != '\0',
                "On the printer's screen under LAN mode.");
+#endif
     return root;
 }
 
@@ -692,6 +719,7 @@ static void append_message(char *message, size_t size, const char *text)
     }
 }
 
+#if DP_WITH_MOONRAKER || DP_WITH_BAMBU
 // Host names and IPs only: no scheme, no spaces, no path.
 static bool host_valid(const char *host, size_t max)
 {
@@ -707,7 +735,9 @@ static bool host_valid(const char *host, size_t max)
     }
     return true;
 }
+#endif
 
+#if DP_WITH_BAMBU
 // A blank secret keeps what is stored; see add_secret().
 static void take_secret(const cJSON *item, char *dst, size_t size)
 {
@@ -715,6 +745,7 @@ static void take_secret(const cJSON *item, char *dst, size_t size)
         strlcpy(dst, item->valuestring, size);
     }
 }
+#endif
 
 static esp_err_t apply_product(const cJSON *values, void *ctx,
                                char *message, size_t message_size)
@@ -749,6 +780,11 @@ static esp_err_t apply_product(const cJSON *values, void *ctx,
             snprintf(message, message_size, "unknown printer source");
             return ESP_ERR_INVALID_ARG;
         }
+        if (!dp_printer_source_available(parsed)) {
+            snprintf(message, message_size, "%s is not in this build (%s)",
+                     dp_source_to_str(parsed), dp_printer_variant());
+            return ESP_ERR_INVALID_ARG;
+        }
         err = dp_printer_set_source(parsed);
         if (err != ESP_OK) {
             snprintf(message, message_size, "could not save: %s", esp_err_to_name(err));
@@ -759,6 +795,7 @@ static esp_err_t apply_product(const cJSON *values, void *ctx,
         append_message(message, message_size, text);
     }
 
+#if DP_WITH_MOONRAKER
     const cJSON *mk_host = cJSON_GetObjectItemCaseSensitive(values, "mk_host");
     if (cJSON_IsString(mk_host)) {
         dc_moonraker_config_t mk = { 0 };
@@ -787,6 +824,8 @@ static esp_err_t apply_product(const cJSON *values, void *ctx,
         append_message(message, message_size, "Moonraker settings saved");
     }
 
+#endif
+#if DP_WITH_BAMBU
     const cJSON *bb_host = cJSON_GetObjectItemCaseSensitive(values, "bb_host");
     if (cJSON_IsString(bb_host)) {
         dc_bambu_config_t bb = { 0 };
@@ -813,6 +852,7 @@ static esp_err_t apply_product(const cJSON *values, void *ctx,
         }
         append_message(message, message_size, "Bambu settings saved - restart to apply");
     }
+#endif
     return ESP_OK;
 }
 
