@@ -14,6 +14,7 @@
 #include "dp_relay.h"
 #include "driver/uart.h"
 #include "esp_err.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "esp_system.h"
@@ -163,6 +164,12 @@ void app_main(void)
     ESP_ERROR_CHECK(dc_wifi_start());
     ESP_ERROR_CHECK(dp_portal_start());
     confirm_running_image();
+    // Everything that runs today is up by here, so this is the baseline any
+    // new feature has to fit into. Live numbers are in /api/v2/state.
+    dc_evlog_add("heap free %u KB, min %u KB, largest block %u KB",
+                 (unsigned)(heap_caps_get_free_size(MALLOC_CAP_8BIT) / 1024),
+                 (unsigned)(heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT) / 1024),
+                 (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024));
 
     ESP_LOGI(TAG, "up: mains=%s usb1=%s",
              dp_relay_get(DP_OUTPUT_MAINS) ? "on" : "off",
