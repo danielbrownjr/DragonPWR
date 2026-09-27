@@ -33,6 +33,8 @@ gaps: where a component or trace is unverified, the docs say so.
 | See planned work and deliberate non-goals | [Roadmap](ROADMAP.md) |
 | Reproduce stock-firmware analysis | [analysis/README.md](../analysis/README.md) |
 | Maintain the GitHub Wiki mirror | [Wiki publishing](WIKI.md) |
+| Cut and package firmware releases | [Releasing](RELEASING.md) |
+| Read the first release candidate notes | [0.0.1rc1](releases/0.0.1rc1.md) |
 
 ## Authority and chronology
 
