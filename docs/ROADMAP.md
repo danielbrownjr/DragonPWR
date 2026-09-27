@@ -210,10 +210,11 @@ The three features that justify the product.
 ## Phase 3 — Metering
 
 - [ ] `dp_meter`: UART1 9600 8E1, `[0xA5][reg|0x80][data][~sum]` framing, the
-      `0xEA` write-enable gate. The chip is identified (HLW8112) and the
-      framing matches its datasheet. Still to recover from the binary before
-      writing it: which registers `ele_task` polls, their widths, and whether
-      stock uses the factory coefficients at `0x70`–`0x77`
+      `0xEA` write-enable gate. The chip is identified (HLW8112), and the stock
+      registers, widths, coefficients and conversions are recovered in
+      docs/METERING_REVERSE_ENGINEERING.md. Stock's init writes are known;
+      a read-only driver must read the chip's actual configuration first,
+      because an ESP reset does not reset the HLW8112
 - [ ] Live voltage / current / power / energy / frequency in the state JSON
 - [ ] **Per-print energy and cost.** Latch the kWh counter on the print-start and
       print-end edges. Configurable rate and currency
@@ -221,9 +222,9 @@ The three features that justify the product.
       hung MCU or a thermal shutdown, and nothing without a meter can see it
 - [ ] **Over-power cutoff** at a configurable ceiling
 - [ ] Voltage-sag logging to `dc_evlog`, so brownouts behind mystery printer
-      resets become visible. Stock polls every 100 ms, but sets the HLW8112's
-      averaged registers to update at 3.4 Hz; the chip's own sag detection
-      (`SAGEN`, off in stock) is worth evaluating for this
+      resets become visible. Stock polls about once a second (≥ 100 ticks) and sets the
+      HLW8112's averaged registers to update at 3.4 Hz; the chip's own sag
+      detection (`SAGEN`, off in stock) is worth evaluating for this
 - [ ] Standby-draw reporting
 
 ## Phase 4 — Integration

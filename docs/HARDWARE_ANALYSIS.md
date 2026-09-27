@@ -259,12 +259,12 @@ Wire format, built in `0x4200ab14`:
 Register `0xEA` is exempt from the `| 0x80` write flag and acts as the
 write-enable gate: `0xE5` unlocks register writes, `0xDC` re-locks them, and
 `0x5A` / `0xA5` select a mode. The four initialization/status registers read
-here are 16-bit. HLW8112 metrology-register widths vary, so the exact registers
-and widths used by `ele_task` still need to be recovered before implementing
-`dp_meter`.
+here are 16-bit. HLW8112 metrology-register widths vary; the exact registers
+and widths `ele_task` uses are recovered in
+[METERING_REVERSE_ENGINEERING.md](METERING_REVERSE_ENGINEERING.md).
 
-The init sequence (`0x4200acf4` onward) reads registers `0x01`, `0x40`, `0x13`,
-`0x1D`, then writes:
+The init sequence (`0x4200ad00`; `0x4200acf4` just before it only seeds the
+energy total) reads registers `0x01`, `0x40`, `0x13`, `0x1D`, then writes:
 
 | Register | Value |
 |---|---|
@@ -274,11 +274,14 @@ The init sequence (`0x4200acf4` onward) reads registers `0x01`, `0x40`, `0x13`,
 | `0x1D` | `0x3219` |
 | `0x40` | `0x4680` |
 
-`ele_task` (`0x42007b46`) polls the device roughly every 100 ms through a vtable
-installed at `0x4200b3fa` (`+0x4` open, `+0x8` flush, `+0xc` write, `+0x10`
-read, `+0x14` no-op) and populates six values — matching the six fields the
-stock HTTP API returns (voltage, current, power, energy, frequency, plus a
-status word).
+`ele_task` (`0x42007b46`) polls the device about **once a second**. A poll
+needs at least 100 elapsed ticks at a proven 10 ms tick, and the loop sleeps
+50 ticks between checks, so the interval is about 1.04 s in v1.0.0.1. It works
+through a vtable installed at `0x4200b3fa` (`+0x4` open, `+0x8`
+flush, `+0xc` write, `+0x10` read, `+0x14` no-op). It reads voltage, current,
+power, energy, frequency and the `RIF` interrupt flags. The stock HTTP API
+returns four of these: voltage, current, power and energy. The register-level
+detail and the arithmetic are in [METERING_REVERSE_ENGINEERING.md](METERING_REVERSE_ENGINEERING.md).
 
 ### Reconciliation with the HLW8112 datasheet
 
@@ -319,16 +322,14 @@ What this establishes:
   initialization. So the load current should reach `IAP`/`IAN`. That is firmware
   configuration, not continuity; the trace from the sensing magnetics is still
   open.
-- The 100 ms `ele_task` poll is faster than the 3.4 Hz average-register update
-  stock selects, so consecutive polls can return the same value.
+- The ≥ 1 s `ele_task` poll is slower than the 3.4 Hz average-register update
+  stock selects.
+- `ele_task`'s registers, widths, coefficients and conversions are recovered
+  in [METERING_REVERSE_ENGINEERING.md](METERING_REVERSE_ENGINEERING.md). In short: RmsU, RmsIA, PowerPA,
+  Energy_PA, Ufreq and RIF; four factory coefficients (`0x70`, `0x72`, `0x73`,
+  `0x76`); and one board constant, 0.51.
 
 Not established yet:
-
-- Which registers `ele_task` polls, and their widths. The datasheet's RMS,
-  power and energy registers are 3–4 bytes, not 2. Check before writing
-  `dp_meter`.
-- Whether stock reads the factory conversion coefficients at `0x70`–`0x77`.
-  The datasheet's calibration-free formulas depend on them.
 - Whether INT1/INT2 reach any ESP pin. The only unexplained input, GPIO6, is
   handled as a toggle switch, which does not fit a 100/120 Hz zero-crossing
   signal.
@@ -405,6 +406,7 @@ the first milestone.
 | `analysis/esp_image.py` | ESP-IDF app-image reader: header facts, segments, load-address reads. No esptool dependency |
 | `analysis/codemap.py` | RV32IMC disassembly, `lui`/`auipc` address recovery, string index, call graph, `__FUNCTION__`-based function identification |
 | `analysis/find_pins.py` | The four reports above |
+| `analysis/recover_meter.py` | The HLW8112 metering path: register reads and widths, writes, special commands, `ele_task` call order, and each conversion's constants. Written up in [METERING_REVERSE_ENGINEERING.md](METERING_REVERSE_ENGINEERING.md) |
 | `analysis/dumpfn.py` | Disassemble one function with string and call-target annotations |
 | `analysis/find_gpio_config.py` | Scans rodata for `gpio_config_t` initializer templates. Finds nothing on this image — GCC builds the struct with inline immediates rather than copying a template — which is why `find_pins.py` replays the stack instead. Kept because it is the first thing to try on a new image |
 
