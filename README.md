@@ -38,9 +38,11 @@ Stock partition table (recovered from `Recovery_tool.rar`):
 | `app1` | app/ota_1 | `0x150000` | 1280 K |
 | `spiffs` | data/spiffs | `0x290000` | 1472 K |
 
-DragonPWR targets this table byte-for-byte so it can be installed by OTA from the
-stock web UI, the same way DragonVent and DragonStatus install over their stock
-firmware.
+DragonPWR targets this table byte-for-byte so the stock flash layout, both OTA
+slots, and full-flash recovery remain compatible. The stock Panda PWR firmware
+does **not** expose a local firmware-upload route or AP recovery fallback, so the
+first DragonPWR install is serial. Once DragonPWR is installed, subsequent
+updates can use DragonPWR's browser OTA path.
 
 ## Back up stock first
 
@@ -156,6 +158,14 @@ stay readable. Clear it by posting `{"token":""}` with the current token.
 
 ## Documentation
 
+Start at the [documentation index](docs/INDEX.md).
+
+- [Installation & Recovery](docs/INSTALLATION_AND_RECOVERY.md) — first install, stock backup/restore, OTA and rollback
+- [Architecture](docs/ARCHITECTURE.md) — boot order, component ownership and safety boundaries
+- [API](docs/API.md) — DragonPWR product routes, authentication and stock compatibility
 - [Roadmap](docs/ROADMAP.md) — phases, the flash budget, and what is deliberately out of scope
-- [Hardware Analysis](docs/HARDWARE_ANALYSIS.md) — pin map recovery, evidence, open questions
-- [analysis/](analysis/) — scripts that produce the evidence
+- [Hardware Analysis](docs/HARDWARE_ANALYSIS.md) — pin map recovery, teardown evidence and open questions
+- [Metering Reverse Engineering](docs/METERING_REVERSE_ENGINEERING.md) — recovered HLW8112 transport, registers, formulas and implementation contract
+- [Bench Notes](docs/BENCH_NOTES.md) — chronological hardware-session evidence
+- [analysis/](analysis/) — reproducible stock-firmware analysis tooling
+- [Wiki publishing](docs/WIKI.md) — how the GitHub Wiki is generated from these canonical sources
