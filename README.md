@@ -10,7 +10,8 @@ is no metering and no printer integration yet - see the
 [roadmap](docs/ROADMAP.md).
 
 The pin map was reverse-engineered from BIGTREETECH's stock images. The outputs
-and the button are confirmed on a board; GPIO6 and the metering chip are not.
+and the button are confirmed on a board. The metering IC is physically confirmed
+as an HLW8112 from a teardown; GPIO6 is still physically unidentified.
 Read [docs/HARDWARE_ANALYSIS.md](docs/HARDWARE_ANALYSIS.md) before you wire
 anything to mains.
 

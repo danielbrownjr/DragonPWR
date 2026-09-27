@@ -3,6 +3,49 @@
 Where Phase 0 stands after each real hardware session, and exactly what to
 pick up next time.
 
+## 2026-09-27 — teardown: metering IC is an HLW8112
+
+A Panda PWR Rev 1 enclosure was opened destructively and the board inspected
+directly. The unit opened destructively for this teardown is the purchased
+spare. The original Panda PWR remains intact and is retained for bench and
+firmware testing; continuity measurements from here on belong to the spare.
+
+The spare cannot be resealed as it was: it has lost its touch protection, so it
+should not go back into service as a plug unless properly re-enclosed.
+Photographs by Daniel Brown are in [docs/images/hardware/](images/hardware/).
+
+**Identified by marking:**
+- ESP8684-MINI-1-H4 controller
+- Hi-Link HLK-20M05 auxiliary supply: 100–240 VAC in, 5 VDC 4 A 20 W out
+- Songle SRD-05VDC-SL-B mains relay
+- **HLW8112** metering IC (second marking line `2423W1D`)
+- ZMPT107-1 voltage-sensing transformer
+- a fuse marked `T2A 250V`, and a separate glass cartridge fuse whose rating
+  isn't legible
+- RGB status LED, USB-C programming/service port, two USB-A ports, `RESET`
+  button, and a pad row silkscreened roughly `GND RX TX 3V3`
+
+**Metering-chip unknown closed.** The stock UART framing, `0xEA` write gate and
+init registers match the HLW8112 datasheet; the decode is in
+docs/HARDWARE_ANALYSIS.md. Stock enables current channel A only.
+
+**Inferred, not confirmed:** the yellow EI-core transformer is probably the
+current-sense transformer; the green toroid is probably a common-mode choke;
+the blue disc is possibly surge suppression; the yellow box capacitor is
+probably mains EMI suppression. An `AP65N06NF` marking was photographed; its
+role is untraced.
+
+**Not mapped yet:** nothing was traced with a meter this session. GPIO6's
+source, the relay COM/NO path, what either fuse protects, the ZMPT107-1 and
+current-sense paths into the HLW8112, HLW8112 TX/RX to GPIO3/GPIO2, the 5 V and
+3.3 V rails, and the isolation boundary are all open. The full list is open
+question 6 in docs/HARDWARE_ANALYSIS.md.
+
+**Next session:** unpowered continuity mapping first, starting with HLW8112
+TX/RX to GPIO3/GPIO2 and GPIO6's trace. Prefer unpowered continuity work. Any
+energized measurement requires a defined mains-safe setup and appropriately
+rated isolated or differential instrumentation.
+
 ## 2026-09-14 — softAP fixed: XTAL_FREQ mismatch, not stale NVS
 
 Picking up from the 09-09 session's blocker: the softAP was invisible over
