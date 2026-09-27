@@ -16,7 +16,7 @@ For every call to the read primitive the register (`a1`) and byte count
 (`a3`) are recovered from the immediates set just before the call. Each
 reader's float/double constants and soft-float ROM calls are printed in
 program order, which is the stock conversion formula. The results are
-written up in docs/METER_RECOVERY.md.
+written up in docs/METERING_REVERSE_ENGINEERING.md.
 """
 import argparse
 import struct

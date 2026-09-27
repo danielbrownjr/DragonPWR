@@ -212,7 +212,7 @@ The three features that justify the product.
 - [ ] `dp_meter`: UART1 9600 8E1, `[0xA5][reg|0x80][data][~sum]` framing, the
       `0xEA` write-enable gate. The chip is identified (HLW8112), and the stock
       registers, widths, coefficients and conversions are recovered in
-      docs/METER_RECOVERY.md. Energy and frequency need stock's init writes;
+      docs/METERING_REVERSE_ENGINEERING.md. Energy and frequency need stock's init writes;
       voltage, current and power work from the chip's reset defaults
 - [ ] Live voltage / current / power / energy / frequency in the state JSON
 - [ ] **Per-print energy and cost.** Latch the kWh counter on the print-start and

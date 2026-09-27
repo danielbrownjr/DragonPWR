@@ -28,7 +28,7 @@ python recover_meter.py stock/panda_pwr-v1.0.0.1.bin  # the HLW8112 metering pat
 `recover_meter.py` finds the meter code by shape, not address, so it also runs
 on `Firmware/1.0.0/panda_pwr-v1.0.0.bin`; the two builds' reports differ only
 in addresses. Its findings are in
-[../docs/METER_RECOVERY.md](../docs/METER_RECOVERY.md).
+[../docs/METERING_REVERSE_ENGINEERING.md](../docs/METERING_REVERSE_ENGINEERING.md).
 
 `find_gpio_config.py` scans rodata for `gpio_config_t` initializer templates. It
 finds nothing on these images, but it is cheap and it is the right first attempt

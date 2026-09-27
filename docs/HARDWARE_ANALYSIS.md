@@ -261,7 +261,7 @@ write-enable gate: `0xE5` unlocks register writes, `0xDC` re-locks them, and
 `0x5A` / `0xA5` select a mode. The four initialization/status registers read
 here are 16-bit. HLW8112 metrology-register widths vary; the exact registers
 and widths `ele_task` uses are recovered in
-[METER_RECOVERY.md](METER_RECOVERY.md).
+[METERING_REVERSE_ENGINEERING.md](METERING_REVERSE_ENGINEERING.md).
 
 The init sequence (`0x4200ad00`; `0x4200acf4` just before it only seeds the
 energy total) reads registers `0x01`, `0x40`, `0x13`, `0x1D`, then writes:
@@ -279,7 +279,7 @@ at 100 Hz) through a vtable installed at `0x4200b3fa` (`+0x4` open, `+0x8`
 flush, `+0xc` write, `+0x10` read, `+0x14` no-op). It reads voltage, current,
 power, energy, frequency and the `RIF` interrupt flags. The stock HTTP API
 returns four of these: voltage, current, power and energy. The register-level
-detail and the arithmetic are in [METER_RECOVERY.md](METER_RECOVERY.md).
+detail and the arithmetic are in [METERING_REVERSE_ENGINEERING.md](METERING_REVERSE_ENGINEERING.md).
 
 ### Reconciliation with the HLW8112 datasheet
 
@@ -323,7 +323,7 @@ What this establishes:
 - The ~1 s `ele_task` poll is slower than the 3.4 Hz average-register update
   stock selects.
 - `ele_task`'s registers, widths, coefficients and conversions are recovered
-  in [METER_RECOVERY.md](METER_RECOVERY.md). In short: RmsU, RmsIA, PowerPA,
+  in [METERING_REVERSE_ENGINEERING.md](METERING_REVERSE_ENGINEERING.md). In short: RmsU, RmsIA, PowerPA,
   Energy_PA, Ufreq and RIF; four factory coefficients (`0x70`, `0x72`, `0x73`,
   `0x76`); and one board constant, 0.51.
 
@@ -404,7 +404,7 @@ the first milestone.
 | `analysis/esp_image.py` | ESP-IDF app-image reader: header facts, segments, load-address reads. No esptool dependency |
 | `analysis/codemap.py` | RV32IMC disassembly, `lui`/`auipc` address recovery, string index, call graph, `__FUNCTION__`-based function identification |
 | `analysis/find_pins.py` | The four reports above |
-| `analysis/recover_meter.py` | The HLW8112 metering path: register reads and widths, writes, special commands, `ele_task` call order, and each conversion's constants. Written up in [METER_RECOVERY.md](METER_RECOVERY.md) |
+| `analysis/recover_meter.py` | The HLW8112 metering path: register reads and widths, writes, special commands, `ele_task` call order, and each conversion's constants. Written up in [METERING_REVERSE_ENGINEERING.md](METERING_REVERSE_ENGINEERING.md) |
 | `analysis/dumpfn.py` | Disassemble one function with string and call-target annotations |
 | `analysis/find_gpio_config.py` | Scans rodata for `gpio_config_t` initializer templates. Finds nothing on this image — GCC builds the struct with inline immediates rather than copying a template — which is why `find_pins.py` replays the stack instead. Kept because it is the first thing to try on a new image |
 
