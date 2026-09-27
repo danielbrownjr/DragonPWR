@@ -223,6 +223,37 @@ class Meter:
                     steps.append(name)
         return steps
 
+    def cadence(self):
+        """ele_task's poll gate, its vTaskDelay arguments, and the OS tick
+        period vPortSetupTimer programs (1000000 / CONFIG_FREERTOS_HZ us).
+        vTaskDelay is the function whose own assert names "vTaskDelay"."""
+        cm = self.cm
+        out = {"gate": None, "delays": [], "tick_us": None}
+        delay = None
+        for a in cm.string_addr("vTaskDelay"):
+            for x in cm.xrefs(a):
+                delay = cm.enclosing_function(x)
+        body = self.body(self.ele_task, 200)
+        for k, ins in enumerate(body[:-2]):
+            nxt, br = body[k + 1], body[k + 2]
+            if ins.mnemonic == "c.sub" and nxt.mnemonic == "addi" and ops(nxt)[1] == "zero" \
+                    and br.mnemonic == "bgeu":
+                out["gate"] = (_imm(ops(nxt)[2]) + 1, ins.address, br.address)
+        for site, t in self.calls_from(body):
+            if t == delay:
+                out["delays"].append((site, self.reg_before(site, "a0")))
+        for a in cm.string_addr("vPortSetupTimer"):
+            for x in cm.xrefs(a):
+                i = cm.by_addr[x]
+                for ins in cm.insns[i:i + 90]:
+                    if ins.mnemonic in ("jal", "c.jal") or (ins.mnemonic == "jalr" and "ra" in ins.op_str):
+                        v = self.reg_values(ins.address, "a2")
+                        if v and 1000 <= v[0] <= 1000000 and self.reg_before(ins.address, "a1") == 0:
+                            out["tick_us"] = (v[0], ins.address)
+                            break
+        out["delay_fn"] = delay
+        return out
+
     def rodata_float(self, addr):
         return struct.unpack("<f", self.img.read(addr, 4))[0]
 
@@ -278,6 +309,19 @@ def main():
             steps = [x for x in m.formula(fn) if x.startswith(("f32", "f64")) or x.startswith("__")]
             if any(x.startswith(("f32", "f64")) for x in steps):
                 print(f"  0x{fn:08x}: " + " -> ".join(steps))
+
+    if m.ele_task:
+        c = m.cadence()
+        print("\n== ele_task cadence ==")
+        if c["tick_us"]:
+            us, site = c["tick_us"]
+            print(f"  OS tick period   {us} us ({1000000 // us} Hz)   vPortSetupTimer call 0x{site:08x}")
+        if c["gate"]:
+            n, a, b = c["gate"]
+            print(f"  poll gate        now - last >= {n} ticks   0x{a:08x}..0x{b:08x}")
+        fn = c["delay_fn"]
+        for site, arg in c["delays"]:
+            print(f"  vTaskDelay(0x{fn:08x})  {arg} ticks   at 0x{site:08x}")
 
     print("\n== conversion steps per reader (constants and soft-float calls, in order) ==")
     for fn in sorted(by_fn):
