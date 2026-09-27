@@ -91,10 +91,11 @@ stopgaps cover the gap:
 
 ## Phase 0 — Bench confirmation
 
-Everything in [HARDWARE_ANALYSIS.md](HARDWARE_ANALYSIS.md) was derived from the
-stock binary; these items check it against a board. What is left needs the case
-open, and a spare unit has been set aside for the teardown so the working one
-stays sealed.
+Phase 0 began with stock-binary analysis and now includes direct bench and
+teardown evidence in [HARDWARE_ANALYSIS.md](HARDWARE_ANALYSIS.md). This checklist
+records what has been physically confirmed and what remains open. The purchased
+spare is open for destructive/continuity work; the original unit remains intact
+for powered bench and firmware testing.
 
 - [x] Back up the stock flash over USB **before anything else** — BTT publishes
       the app images but not a full flash dump, so this is the only way back.
@@ -118,7 +119,8 @@ stays sealed.
 - [ ] On the teardown unit, trace which ESP pins reach the HLW8112 (UART1,
       GPIO2/3, per the stock firmware) and what scales its current input: stock
       uses channel A only, and the sensing element looks like a current
-      transformer rather than a shunt, which is still to be confirmed
+      transformer rather than a shunt, which is still to be confirmed. This is
+      now hardware characterization, not a blocker for implementing `dp_meter`
 - [x] Determine whether the relay is latching or momentary — 5 on/off cycles
       driven 1.5 s apart over `/api/v2/command`; clicks landed at that same
       ~1.5 s cadence (not ~3 s), i.e. **both** the on and the off edge

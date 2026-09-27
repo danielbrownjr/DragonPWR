@@ -70,14 +70,14 @@ def rewrite_target(source_path: str, raw_target: str) -> str:
     if mapped:
         return mapped + anchor
 
+    is_directory = path_part.endswith("/")
     image_prefix = "docs/images/"
-    if resolved.startswith(image_prefix):
+    if resolved.startswith(image_prefix) and not is_directory:
         return "images/" + resolved[len(image_prefix):] + anchor
 
     is_image = raw_target.startswith(("images/", "../images/")) or bool(
         re.search(r"\.(?:png|jpe?g|gif|webp|svg)$", resolved, re.I)
     )
-    is_directory = path_part.endswith("/")
     return repo_url(resolved, image=is_image, directory=is_directory) + anchor
 
 
