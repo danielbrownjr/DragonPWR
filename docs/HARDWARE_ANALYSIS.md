@@ -53,7 +53,10 @@ gp-relative, so this is needed to read them.
 
 ## Physical teardown (2026-09-27)
 
-One Panda PWR Rev 1 was opened destructively and inspected directly. Photographs
+One Panda PWR Rev 1 was opened destructively and inspected directly. The unit
+opened destructively for this teardown is the purchased spare. The original
+Panda PWR remains intact and is retained for bench and firmware testing;
+continuity measurements from here on belong to the spare. Photographs
 by Daniel Brown; the four below are crops/enhancements of those photographs, not
 generated images. FCC internal photos were used for comparison but are not
 reproduced here.
@@ -255,7 +258,10 @@ Wire format, built in `0x4200ab14`:
 
 Register `0xEA` is exempt from the `| 0x80` write flag and acts as the
 write-enable gate: `0xE5` unlocks register writes, `0xDC` re-locks them, and
-`0x5A` / `0xA5` select a mode. Reads are 2 bytes per register.
+`0x5A` / `0xA5` select a mode. The four initialization/status registers read
+here are 16-bit. HLW8112 metrology-register widths vary, so the exact registers
+and widths used by `ele_task` still need to be recovered before implementing
+`dp_meter`.
 
 The init sequence (`0x4200acf4` onward) reads registers `0x01`, `0x40`, `0x13`,
 `0x1D`, then writes:
@@ -299,7 +305,7 @@ lists the values):
 |---|---|---|---|
 | `0x00` | SYSCON | `0x0A04` | The datasheet reset value. Voltage channel U on, current channel **A on at PGA 16**, current channel **B off** |
 | `0x01` | EMUCON | `0x0181` | PFA pulse output and `Energy_PA` accumulation on (`PARUN`); `PBRUN` off. Zero-crossing output on both edges. AC mode, all high-pass filters on |
-| `0x13` | EMUCON2 | `0x046D` | Built-in 1.25 V reference; zero-crossing/frequency, overvoltage/overcurrent/overload detection, waveform and power-factor functions on. `Energy_PA` **not** cleared on read. Averaged data updates at **3.4 Hz**. Channel B set to measure the internal temperature, not current. Sag and peak detection off |
+| `0x13` | EMUCON2 | `0x046D` | Built-in 1.25 V reference; zero-crossing/frequency, overvoltage/overcurrent/overload detection, waveform and power-factor functions on. `Energy_PA` **not** cleared on read. Averaged data updates at **3.4 Hz**. `CHS_IB=0` selects the internal-temperature path rather than IB current, but the temperature-measurement module (`EMUCON.tensor_en`) is not enabled by this initialization. Sag and peak detection off |
 | `0x1D` | INT | `0x3219` | INT1 outputs the voltage zero-crossing signal (reset default is PFA); INT2 stays PFB |
 | `0x40` | IE | `0x4680` | Interrupts enabled: voltage zero-crossing, power overload, overvoltage, channel A overcurrent |
 
@@ -307,8 +313,10 @@ What this establishes:
 
 - The stock framing, write gate and register addresses are the HLW8112's. The
   earlier ATT705x / V92xx guess is retired.
-- Stock uses **one current channel, A**. B is powered down and repurposed for
-  temperature. So the load current should reach `IAP`/`IAN`. That is firmware
+- Stock uses **one current channel, A**. Current channel B is disabled
+  (`SYSCON`). `CHS_IB=0` selects the internal-temperature path rather than IB
+  current, but the temperature-measurement module is not enabled by this
+  initialization. So the load current should reach `IAP`/`IAN`. That is firmware
   configuration, not continuity; the trace from the sensing magnetics is still
   open.
 - The 100 ms `ele_task` poll is faster than the 3.4 Hz average-register update
@@ -360,8 +368,8 @@ the first milestone.
    docs/BENCH_NOTES.md, 2026-09-14): 5 on/off cycles 1.5 s apart clicked at
    that same cadence, not ~3 s — both edges click, so it's a standard,
    continuously-driven relay, not latching/bistable.
-3. **What is GPIO6 physically?** Still unconfirmed. A unit is now open, but
-   the trace has not been followed yet. What IS now
+3. **What is GPIO6 physically?** Still unconfirmed. The spare is now open,
+   but the trace has not been followed yet. What IS now
    known: it has no pull resistor and, left unconnected, floats and produces
    spurious stable-looking transitions — a bench session caught DragonPWR's
    own GPIO6 handling switching mains on with nobody touching anything (see

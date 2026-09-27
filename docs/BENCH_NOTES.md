@@ -6,9 +6,13 @@ pick up next time.
 ## 2026-09-27 — teardown: metering IC is an HLW8112
 
 A Panda PWR Rev 1 enclosure was opened destructively and the board inspected
-directly. It cannot be resealed as it was: it has lost its touch protection,
-so it should not go back into service as a plug unless properly re-enclosed. Photographs by Daniel Brown are in
-[docs/images/hardware/](images/hardware/).
+directly. The unit opened destructively for this teardown is the purchased
+spare. The original Panda PWR remains intact and is retained for bench and
+firmware testing; continuity measurements from here on belong to the spare.
+
+The spare cannot be resealed as it was: it has lost its touch protection, so it
+should not go back into service as a plug unless properly re-enclosed.
+Photographs by Daniel Brown are in [docs/images/hardware/](images/hardware/).
 
 **Identified by marking:**
 - ESP8684-MINI-1-H4 controller
@@ -38,8 +42,9 @@ current-sense paths into the HLW8112, HLW8112 TX/RX to GPIO3/GPIO2, the 5 V and
 question 6 in docs/HARDWARE_ANALYSIS.md.
 
 **Next session:** unpowered continuity mapping first, starting with HLW8112
-TX/RX to GPIO3/GPIO2 and GPIO6's trace. Only energise the opened board with
-isolation and a plan for each measurement.
+TX/RX to GPIO3/GPIO2 and GPIO6's trace. Prefer unpowered continuity work. Any
+energized measurement requires a defined mains-safe setup and appropriately
+rated isolated or differential instrumentation.
 
 ## 2026-09-14 — softAP fixed: XTAL_FREQ mismatch, not stale NVS
 
