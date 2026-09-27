@@ -50,9 +50,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          merged="$(find build -maxdepth 1 -type f -name '*merged*.bin' -print -quit)"
-          test -n "$merged" || { echo "idf.py merge-bin produced no merged binary" >&2; exit 1; }
-          cp "$merged" build/dragonpwr-full.bin
+          test -f build/merged-binary.bin
 
       - name: Upload flashable build outputs
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -61,7 +59,7 @@ jobs:
           if-no-files-found: error
           path: |
             build/dragonpwr.bin
-            build/dragonpwr-full.bin
+            build/merged-binary.bin
             build/bootloader/bootloader.bin
             build/partition_table/partition-table.bin
             build/ota_data_initial.bin
