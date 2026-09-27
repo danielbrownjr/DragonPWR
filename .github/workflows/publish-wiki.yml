@@ -1,0 +1,48 @@
+name: Publish wiki
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - README.md
+      - docs/**
+      - analysis/README.md
+      - wiki/**
+      - scripts/build_wiki.py
+      - .github/workflows/publish-wiki.yml
+
+concurrency:
+  group: dragonpwr-wiki
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Build generated wiki tree
+        run: python scripts/build_wiki.py
+
+      - name: Check wiki backend
+        id: wiki
+        shell: bash
+        run: |
+          if git ls-remote "https://github.com/${GITHUB_REPOSITORY}.wiki.git" >/dev/null 2>&1; then
+            echo "ready=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "ready=false" >> "${GITHUB_OUTPUT}"
+            echo "::warning::GitHub Wiki is enabled but its backing repository has not been initialized. Create one page in the Wiki tab, then rerun this workflow."
+          fi
+
+      - name: Publish generated wiki
+        if: steps.wiki.outputs.ready == 'true'
+        uses: step-security/github-wiki-action@816d235939b89389508f7d2ed5b4ed1083f62221 # v5
+        with:
+          path: .wiki-out
+          disable-empty-commits: true
