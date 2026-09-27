@@ -111,9 +111,14 @@ stays sealed.
       manual documents only the Bind button and no photo shows a second control,
       so what drives this pin is genuinely unknown. On the teardown unit: follow
       its trace
-- [ ] Photograph the metering IC and match it against the register map. On the
-      teardown unit, also: which ESP pins reach it (UART1 per the stock
-      firmware), and the shunt resistor's value, which scales current
+- [x] Photograph the metering IC and match it against the register map —
+      it is an **HLW8112** (package marking, 2026-09-27 teardown), and the stock
+      framing, `0xEA` write gate and init registers match its datasheet. See
+      docs/HARDWARE_ANALYSIS.md
+- [ ] On the teardown unit, trace which ESP pins reach the HLW8112 (UART1,
+      GPIO2/3, per the stock firmware) and what scales its current input: stock
+      uses channel A only, and the sensing element looks like a current
+      transformer rather than a shunt, which is still to be confirmed
 - [x] Determine whether the relay is latching or momentary — 5 on/off cycles
       driven 1.5 s apart over `/api/v2/command`; clicks landed at that same
       ~1.5 s cadence (not ~3 s), i.e. **both** the on and the off edge
@@ -205,17 +210,20 @@ The three features that justify the product.
 ## Phase 3 — Metering
 
 - [ ] `dp_meter`: UART1 9600 8E1, `[0xA5][reg|0x80][data][~sum]` framing, the
-      `0xEA` write-enable gate. Blocked on Phase 0 identifying the chip before
-      the register semantics can be trusted
+      `0xEA` write-enable gate. The chip is identified (HLW8112) and the
+      framing matches its datasheet. Still to recover from the binary before
+      writing it: which registers `ele_task` polls, their widths, and whether
+      stock uses the factory coefficients at `0x70`–`0x77`
 - [ ] Live voltage / current / power / energy / frequency in the state JSON
 - [ ] **Per-print energy and cost.** Latch the kWh counter on the print-start and
       print-end edges. Configurable rate and currency
 - [ ] **Draw-vs-state cross-check.** "Printing" but drawing standby current is a
       hung MCU or a thermal shutdown, and nothing without a meter can see it
 - [ ] **Over-power cutoff** at a configurable ceiling
-- [ ] Voltage-sag logging to `dc_evlog` — the meter samples at roughly 10 Hz
-      (stock's `ele_task` polls on a 100 ms tick), so brownouts behind mystery
-      printer resets become visible
+- [ ] Voltage-sag logging to `dc_evlog`, so brownouts behind mystery printer
+      resets become visible. Stock polls every 100 ms, but sets the HLW8112's
+      averaged registers to update at 3.4 Hz; the chip's own sag detection
+      (`SAGEN`, off in stock) is worth evaluating for this
 - [ ] Standby-draw reporting
 
 ## Phase 4 — Integration
