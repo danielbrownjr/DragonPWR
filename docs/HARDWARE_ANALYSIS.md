@@ -274,8 +274,10 @@ energy total) reads registers `0x01`, `0x40`, `0x13`, `0x1D`, then writes:
 | `0x1D` | `0x3219` |
 | `0x40` | `0x4680` |
 
-`ele_task` (`0x42007b46`) polls the device about **once a second** (100 ticks
-at 100 Hz) through a vtable installed at `0x4200b3fa` (`+0x4` open, `+0x8`
+`ele_task` (`0x42007b46`) polls the device about **once a second**. A poll
+needs at least 100 elapsed ticks at a proven 10 ms tick, and the loop sleeps
+50 ticks between checks, so the interval is about 1.04 s in v1.0.0.1. It works
+through a vtable installed at `0x4200b3fa` (`+0x4` open, `+0x8`
 flush, `+0xc` write, `+0x10` read, `+0x14` no-op). It reads voltage, current,
 power, energy, frequency and the `RIF` interrupt flags. The stock HTTP API
 returns four of these: voltage, current, power and energy. The register-level
@@ -320,7 +322,7 @@ What this establishes:
   initialization. So the load current should reach `IAP`/`IAN`. That is firmware
   configuration, not continuity; the trace from the sensing magnetics is still
   open.
-- The ~1 s `ele_task` poll is slower than the 3.4 Hz average-register update
+- The ≥ 1 s `ele_task` poll is slower than the 3.4 Hz average-register update
   stock selects.
 - `ele_task`'s registers, widths, coefficients and conversions are recovered
   in [METERING_REVERSE_ENGINEERING.md](METERING_REVERSE_ENGINEERING.md). In short: RmsU, RmsIA, PowerPA,

@@ -23,9 +23,11 @@ Addresses are from `panda_pwr-v1.0.0.1.bin` unless noted.
 
 These are decisions or runtime facts, not blockers:
 
-1. **Init writes.** Energy and frequency need the chip configured. Stock
-   writes five registers at every boot, and the values are known exactly.
-   Voltage, current and power work from the chip's reset defaults with no writes.
+1. **Init writes.** Stock writes five registers at every boot, and the values
+   are known exactly. A read-only driver can't assume any particular chip
+   configuration, because an ESP reset or reflash does not reset the HLW8112.
+   It must read the control registers and report what that configuration
+   supports (see the contract below).
 2. **Factory coefficients** are per chip. They must be read at runtime and are
    not in the image.
 3. **The board constant 0.51** is BTT's. Its accuracy against a reference meter
@@ -69,13 +71,13 @@ from DS table 9.
 | `0x1D` | INT | 2 | R, W, R | 2 | write `0x3219` | `0x4200ad48`, `0x4200adc4`, `0x4200ae38` |
 | `0x40` | IE | 2 | R, W, R | 2 | write `0x4680` | `0x4200ad2c`, `0x4200addc`, `0x4200ae1c` |
 | `0x26` | RmsU | 3 | R | 3 | voltage | `0x4200ae62` |
-| `0x72` | RmsUC | 2 | R | 2 | voltage coefficient, once | `0x4200ae92` |
+| `0x72` | RmsUC | 2 | R | 2 | voltage coefficient; cached, re-read only while the cached value is 0 | `0x4200ae92` |
 | `0x24` | RmsIA | 3 | R | 3 | current, channel A | `0x4200af60` |
-| `0x70` | RmsIAC | 2 | R | 2 | current coefficient, once | `0x4200af90` |
+| `0x70` | RmsIAC | 2 | R | 2 | current coefficient; cached, re-read only while the cached value is 0 | `0x4200af90` |
 | `0x2C` | PowerPA | 4 | R | 4 | active power, channel A | `0x4200b044` |
-| `0x73` | PowerPAC | 2 | R | 2 | power coefficient, once | `0x4200b086` |
+| `0x73` | PowerPAC | 2 | R | 2 | power coefficient; cached, re-read only while the cached value is 0 | `0x4200b086` |
 | `0x28` | Energy_PA | 3 | R | 3 | energy pulses, channel A; read twice more to clear | `0x4200b13e`, `0x4200b23e`, `0x4200b24c` |
-| `0x76` | EnergyAC | 2 | R | 2 | energy coefficient, once | `0x4200b170` |
+| `0x76` | EnergyAC | 2 | R | 2 | energy coefficient; cached, re-read only while the cached value is 0 | `0x4200b170` |
 | `0x23` | Ufreq | 2 | R | 2 | line frequency | `0x4200b298` |
 | `0x42` | RIF | 2 | R | 2 | interrupt flags, cleared by the read | `0x4200b306` |
 
@@ -110,8 +112,11 @@ contents.
 
 ## Integer detail per reader
 
-All raw values are **unsigned**. Bytes are assembled MSB first with shifts and
-`add` (never sign-extending loads). Every coefficient is `lhu` followed by a
+Every raw value is **assembled as unsigned**: bytes MSB first, combined with
+shifts and `add`, never a sign-extending load. Sign is handled afterwards, per
+reader, as the table shows. The datasheet's formats are: RMS registers 24-bit
+with bit 23 = "treat as zero"; `PowerPA` 32-bit two's complement; `Energy_PA`,
+`Ufreq` and the coefficients unsigned. Every coefficient is `lhu` followed by a
 16-bit byte swap, `(x << 8 | x >> 8)`, then `<< 16 >> 16` to zero-extend. The
 result is **u16 big-endian, zero-extended**.
 
@@ -190,7 +195,9 @@ app_main ── 0x42007976 meter setup
 
 xTaskCreate(ele_task 0x42007b46)   ; name string referenced at 0x420041d2
   0x4200acf4  acc = NVS "power"    ; float kWh, seeded once
-  loop, every 100 ticks (~1 s):
+  loop:                              ; tick = 10 ms, proven below
+    now - last >= 100 ticks?          ; 0x42007b94..0x42007ba6, else skip to the delay
+    last = now                        ; 0x42007baa..0x42007bb2, stamped BEFORE the reads
     0x4200ae42  RmsU,RmsUC      → work.v  0x3fcb1210 (+0x00) float V
     0x4200af40  RmsIA,RmsIAC    → work.i  0x3fcb1214 (+0x04) float A
     0x4200b024  PowerPA,PAC     → work.p  0x3fcb1218 (+0x08) float W
@@ -201,7 +208,7 @@ xTaskCreate(ele_task 0x42007b46)   ; name string referenced at 0x420041d2
     if 0x42007a34(work) [45 <= f <= 65 and v >= 10]:
         nvs_mirror 0x3fcb5370 = work.e
         0x42007ae8 publish: memcpy(0x3fcb1224, work, 20) under mutex
-    vTaskDelay(50)
+    vTaskDelay(50)                    ; 0x42007c50..0x42007c58, on every path; then 0x42007c5c jumps to the top
 
 /update_ele_data (0x42005bc8) ── 0x42007a08 copy of 0x3fcb1224
     +0x00 v → __fixunssfsi → "voltage":%ld
@@ -220,6 +227,48 @@ app_ctl_task: every 6000 ticks (60 s, 0x420076a8) → storage request 3
 energy reset 0x42007aac: /set reset_usage (0x420068b2), factory reset (0x420045c2),
                          and 0x420057f0, 0x42006bc4 (not identified)
 ```
+
+## Poll cadence
+
+This is proven from `ele_task` in v1.0.0.1 and the FreeRTOS port.
+
+| Fact | Evidence |
+|---|---|
+| Tick = **10 ms** (100 Hz) | `vPortSetupTimer` (its `port_systick.c` assert strings are at `0x403887b4`–`0x403887bc`) programs the OS-tick alarm period with `10000` µs: `c.lui a2,2` + `addi a2,a2,0x710` = `0x2710` at `0x4038884e`/`0x40388854`, call at `0x4038885a`. That is ESP-IDF's `1000000 / CONFIG_FREERTOS_HZ`. It agrees with the app's own `pdMS_TO_TICKS` expansion, `ms × 100 / 1000`, at `0x420079c8` |
+| `0x403877a0` is `vTaskDelay` | Its own `configASSERT` passes the name string `"vTaskDelay"` (`0x403877be`) |
+| `0x403874a2` is `xTaskGetTickCount` | It returns one global (`lw a0, 0x2d0(a5)`, `0x3fcb52d0`) and is called about 120 times |
+| Gate | `a0 = xTaskGetTickCount() − last` (`0x42007b94`–`0x42007ba0`); `bgeu 99, a0 → skip` (`0x42007ba2`/`0x42007ba6`). It polls only when **elapsed ≥ 100 ticks** |
+| Timestamp | `last = xTaskGetTickCount()` at `0x42007baa`, stored at `0x42007bb2`, **before** the six readers run |
+| Sleep | `vTaskDelay(50)` at `0x42007c50`–`0x42007c58` ends **every** path: skipped, invalid and published alike. `0x42007c5c` jumps back to the gate. There is no other delay in `ele_task` |
+
+Let R be the time from the timestamp to the start of `vTaskDelay`, i.e. the
+six reads plus publish. After a poll the task sleeps 50 ticks and wakes with
+elapsed = R + 50:
+
+- **If R < 50 ticks**, elapsed < 100, so it sleeps again and polls on the next
+  wake. The poll interval is **100 ticks + R**: two 50-tick sleeps per poll,
+  the first ending in a skipped check.
+- **If R ≥ 50 ticks**, the interval is R + 50.
+
+Either way the interval is **at least 100 ticks (1.00 s)**. That much is proven.
+
+R is **estimated, not measured**:
+- **Normal poll:** six read transactions with cached coefficients, 12 bytes
+  sent and 23 received. At 9600 8E1 (11 bits per byte) that is about 40 ms, or
+  4 ticks.
+- **Energy commit:** adds four frame writes, each followed by `vTaskDelay(5)`,
+  so 20 ticks plus about 30 bytes.
+- **First poll:** also reads the four coefficients.
+
+So the expected interval is about **1.04 s**, and about **1.25 s** on a poll
+that commits energy. It cannot be as short as 500 ms: every poll is gated on
+100 elapsed ticks.
+
+**v1.0.0 differs here**: its loop ends in `vTaskDelay(1)` (`0x42007900`), so
+the same 100-tick gate is checked every tick, and its interval is 100 ticks
+rounded up to the next tick, about 1.00–1.01 s. The gate constant and the tick
+period are the same in both builds. `recover_meter.py` prints all of this in
+its cadence section.
 
 ## Definitive JSON mapping
 
@@ -251,8 +300,8 @@ power and energy are not swapped anywhere along the path.
   clear it. Each poll converts the whole counter to Δ kWh.
 - **Commit:** when Δ ≥ 0.001 kWh, stock adds Δ to the total. It then clears the
   chip counter: `E5`, `EMUCON2 = 0x006D` (clear on read), two reads of
-  `Energy_PA`, `EMUCON2 = 0x046D`, `DC`. At a 1 s poll, Δ only reaches 0.001 kWh
-  at 3.6 kW or more; below that the counter accumulates across polls first.
+  `Energy_PA`, `EMUCON2 = 0x046D`, `DC`. At a poll interval of about 1.04 s, Δ
+  only reaches 0.001 kWh at roughly 3.5 kW or more; below that the counter accumulates across polls first.
 - **Losses:** energy that accumulates during the clear sequence is discarded.
   So is anything since the last NVS save (up to 60 s) on power loss.
 - **Wrap:** the chip counter is cleared at about 0.001 kWh, so its 24-bit range
@@ -269,19 +318,19 @@ power and energy are not swapped anywhere along the path.
 | Same calibration strategy? | Yes: the same four coefficients, cached, K = 0.51 |
 | Same conversion constants and thresholds? | Yes: every rodata constant, the 0.01 A floor, the 45/65 Hz and 10 V validity limits, the 0.001 kWh commit |
 | Same sign and guard logic? | Yes, including the unchecked coefficient reads |
-| Behaviour changes | None found |
+| Same poll gate? | Yes: ≥ 100 ticks, with a 10 ms tick in both |
+| Behaviour changes | **One:** the loop's idle sleep is `vTaskDelay(1)` in v1.0.0 and `vTaskDelay(50)` in v1.0.0.1, so polls are about 1.00 s apart in v1.0.0 and about 1.04 s in v1.0.0.1 (see Poll cadence). The metering results don't change |
 
-The `recover_meter.py` reports for the two builds are identical once addresses
-are stripped. The sign and guard instructions were compared by hand. The
+With addresses stripped, the `recover_meter.py` reports for the two builds
+differ only in that `vTaskDelay` argument. The sign and guard instructions were compared by hand. The
 v1.0.1_beta1 and 01.00.02.05 images were not available and are unchecked.
 
 ## Remaining unknowns
 
 - The two energy-reset callers `0x420057f0` and `0x42006bc4`, and where
   `0x42008cd0` sends its frames. None of these affect `dp_meter`.
-- The tick rate is 100 Hz by inference from the firmware's own `pdMS_TO_TICKS`
-  expansion (`ms × 100 / 1000` at `0x420079c8` and `0x420076d0`), not from a
-  stored config value.
+- The exact duration of a poll, R. The interval is proven to be at least
+  100 ticks, but R is only estimated from byte counts.
 - Why the trailing `× 1000 ÷ 1000` exists (see above).
 - The physical derivation of 0.51.
 - Why a GPIO6 change is acted on only when `0x42007a34(NULL)` passes
@@ -298,30 +347,72 @@ This is a specification for the next PR, not an implementation.
   using any of its bytes.
 
 **Init: two modes**
-- **Read-only (default for first bring-up):** no writes at all. Voltage,
-  current and power come from reset defaults (`SYSCON` 0x0A04: U and IA on,
-  PGA 16). Report energy and frequency as unavailable, because reset `EMUCON`
-  0x0000 disables `PARUN` and reset `EMUCON2` 0x0001 disables `ZxEN`.
+- **Read-only (default for first bring-up).** No configuration writes and no
+  `0xEA` commands at all: no reset, no channel select, no write-enable. Do not
+  assume the chip is in any particular state. An ESP software reset or a
+  reflash does not reset the HLW8112, so after stock it may still hold stock's
+  configuration, and after a mains power cycle it will hold its reset
+  defaults. Instead:
+  1. Read `SYSCON 0x00`, `EMUCON 0x01`, `HFConst 0x02` and `EMUCON2 0x13`
+     first, and log the **observed** values. Label them as matching the
+     documented reset defaults (`0x0A04 / 0x0000 / 0x1000 / 0x0001`), matching
+     stock (`0x0A04 / 0x0181 / 0x1000 / 0x046D`), or neither. The label is for
+     diagnosis only; availability comes from the observed bits.
+  2. Decide availability from the observed configuration:
+     - **Voltage** needs `SYSCON.ADC3ON` (bit 11).
+     - **Current A** needs `SYSCON.ADC1ON` (bit 9).
+     - **Active power A** needs both.
+     - The factory coefficients are calibrated at voltage PGA = 1 and current A
+       PGA = 16 (DS table 44). With any other `PGAU` (bits 5:3) or `PGAIA`
+       (bits 2:0) the calibration-free formulas don't hold: report the value
+       as unscaled or unavailable.
+     - **Energy** needs `EMUCON.PARUN` (bit 0). The formula includes
+       `HFConst / 4096`, so use the observed `HFConst`.
+     - **Frequency** needs `EMUCON2.ZxEN` (bit 2) and `WaveEN` (bit 5).
+  3. Report every unavailable measurement explicitly, with the reason (which
+     bit). Never substitute zero.
+  4. Avoid reads with side effects. `RIF 0x42` clears on read, so read-only
+     mode shouldn't poll it. `Energy_PA` also clears on read when
+     `EMUCON2.EPA_CA` (bit 10) is 0; read `EPA_CA` and treat the register as a
+     per-read delta (clears) or a running count (doesn't clear) accordingly.
+  5. Re-read the control registers periodically or after any read error. The
+     configuration can change underneath the driver: stock is not running,
+     but a chip power cycle resets it.
 - **Stock-equivalent (opt-in):** send exactly stock's sequence, verified at the
   instruction level: `0x96` reset; `E5`; `5A`; `0x00=0x0A04`; `0x01=0x0181`;
   `0x13=0x046D`; `0x1D=0x3219`; `0x40=0x4680`; `DC`. Read each register back
-  and compare, which stock doesn't do.
+  and compare, which stock doesn't do. This is the only mode that may assume
+  stock's configuration, because it has just written it.
 
 **Factory coefficients: must be read at boot**
 - Read RmsIAC `0x70`, RmsUC `0x72`, PowerPAC `0x73` and EnergyAC `0x76`, as u16
   big-endian.
 - Check every read, and retry on failure or 0.
-- Optionally verify the checksum: `0x6F` should equal the low 16 bits of
-  `~(0xFFFF + 0x70 + … + 0x77)` (DS p. 58).
+- Optionally verify the coefficient checksum. It is computed over the
+  **values** stored in all eight coefficient registers, not over their
+  addresses, so it needs all eight read, not just the four stock uses
+  (DS p. 58: "Check sum = ~(FFFFH + RmsIAC + …… + EnergyBC), take two bytes
+  lower"):
+
+  ```text
+  sum = 0xFFFF + RmsIAC  (value of 0x70) + RmsIBC   (value of 0x71)
+               + RmsUC   (value of 0x72) + PowerPAC (value of 0x73)
+               + PowerPBC(value of 0x74) + PowerSC  (value of 0x75)
+               + EnergyAC(value of 0x76) + EnergyBC (value of 0x77)   # wider than 16 bits
+  checksum = (~sum) & 0xFFFF                                          # compare with the value of 0x6F
+  ```
 - Log the four values.
 
 **Reads each sample**
-- `0x26`/3, `0x24`/3, `0x2C`/4, then `0x28`/3 and `0x23`/2 only in
-  stock-equivalent mode.
+- `0x26`/3, `0x24`/3 and `0x2C`/4. Add `0x28`/3 and `0x23`/2 only when energy
+  and frequency are available: always in stock-equivalent mode, and in
+  read-only mode only when the enabling bits were observed.
 - Keep the raw values alongside the converted ones.
 
-**Cadence:** 1 s, matching stock. Averaged registers update at 3.4 Hz under
-stock's `DUPSEL`.
+**Cadence:** a fixed 1 s period (e.g. `vTaskDelayUntil`) is close to stock
+(≥ 1.00 s; about 1.04 s in v1.0.0.1, about 1.00 s in v1.0.0) and simpler.
+Averaged registers update at 3.4 Hz under stock's `DUPSEL`; in read-only
+mode, take the rate from the observed `EMUCON2.DUPSEL` (bits 9:8).
 
 **Conversions**
 - V = RmsU·RmsUC / 2²² / 0.51 / 100
@@ -332,12 +423,15 @@ stock's `DUPSEL`.
 - Use K2 = 0.51 and K1 = 1 as named constants, marked as BTT's unverified
   board constants.
 - Converted types: float, or a fixed-point integer such as mV, mA and mW.
-  Raw types: u24 for RMS, s32 for power, u24 for energy, u16 for Ufreq.
+  Raw types: u24 for RMS (bit 23 = zero), s32 for power, u24 for energy,
+  u16 for Ufreq and the coefficients.
 
-**Energy (stock-equivalent mode only)**
+**Energy (when available)**
 - Accumulate `Energy_PA` deltas in an integer or a double, not a float32.
-- Either clear the chip counter the way stock does, accepting the small
-  discard, or track a running u24 and handle its wrap yourself.
+- Read-only mode must not clear the chip counter, because that needs writes.
+  Track successive u24 readings, handle wrap, and account for `EPA_CA`.
+- Stock-equivalent mode may clear it the way stock does, accepting the small
+  discard, or also track a running u24.
 - Persist on a bounded schedule, and document the maximum loss on power-off.
 
 **Validity**
