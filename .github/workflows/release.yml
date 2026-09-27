@@ -1,0 +1,112 @@
+name: Create firmware release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version/tag, for example 0.0.1rc1"
+        required: true
+        default: "0.0.1rc1"
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Check out main with full history
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      - name: Validate release request and prepare local tag
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(rc[0-9]+)?$ ]]; then
+            echo "Invalid version: $VERSION" >&2
+            exit 1
+          fi
+          notes="docs/releases/$VERSION.md"
+          test -f "$notes" || { echo "Missing release notes: $notes" >&2; exit 1; }
+
+          git fetch --tags --force
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            tagged="$(git rev-list -n1 "$VERSION")"
+            if [[ "$tagged" != "$GITHUB_SHA" ]]; then
+              echo "Tag $VERSION already points to $tagged, not $GITHUB_SHA" >&2
+              exit 1
+            fi
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            git tag "$VERSION" "$GITHUB_SHA"
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [[ "$VERSION" == *rc* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and merge flash image with ESP-IDF 5.3.5
+        run: |
+          docker run --rm             -v "$GITHUB_WORKSPACE:/work"             -w /work             espressif/idf:v5.3.5             bash -lc '
+              set -euo pipefail
+              git config --global --add safe.directory /work
+              idf.py -D IDF_TARGET=esp32c2 build
+              idf.py size
+              idf.py merge-bin
+            '
+
+      - name: Package and verify artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          test -f build/dragonpwr.bin
+
+          merged="$(find build -maxdepth 1 -type f -name '*merged*.bin' -print -quit)"
+          test -n "$merged" || { echo "idf.py merge-bin produced no merged binary" >&2; exit 1; }
+
+          cp build/dragonpwr.bin "dist/DragonPWR-$VERSION-ota.bin"
+          cp "$merged" "dist/DragonPWR-$VERSION-full.bin"
+
+          # The app image must contain the exact release version supplied by the
+          # local tag before anything is pushed or published.
+          if ! strings build/dragonpwr.bin | grep -Fqx "$VERSION"; then
+            echo "Built app image does not contain exact version $VERSION" >&2
+            exit 1
+          fi
+
+          sha256sum dist/*.bin > dist/SHA256SUMS.txt
+          ls -lh dist
+          cat dist/SHA256SUMS.txt
+
+      - name: Push release tag
+        if: steps.version.outputs.tag_exists == 'false'
+        run: git push origin "refs/tags/$VERSION"
+
+      - name: Create or refresh GitHub prerelease
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "${{ steps.version.outputs.prerelease }}" == "true" ]]; then
+            args+=(--prerelease)
+          fi
+
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" dist/* --clobber
+            gh release edit "$VERSION"               --title "DragonPWR $VERSION"               --notes-file "docs/releases/$VERSION.md"               "${args[@]}"
+          else
+            gh release create "$VERSION" dist/*               --verify-tag               --title "DragonPWR $VERSION"               --notes-file "docs/releases/$VERSION.md"               "${args[@]}"
+          fi

@@ -1,0 +1,67 @@
+name: Firmware build
+
+on:
+  pull_request:
+    paths:
+      - CMakeLists.txt
+      - dependencies.lock
+      - partitions.csv
+      - sdkconfig.defaults
+      - main/**
+      - components/**
+      - .github/workflows/firmware-build.yml
+      - .github/workflows/release.yml
+  push:
+    branches: [main]
+    paths:
+      - CMakeLists.txt
+      - dependencies.lock
+      - partitions.csv
+      - sdkconfig.defaults
+      - main/**
+      - components/**
+      - .github/workflows/firmware-build.yml
+      - .github/workflows/release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  esp32c2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      - name: Build ESP32-C2 firmware with ESP-IDF 5.3.5
+        run: |
+          docker run --rm             -v "$GITHUB_WORKSPACE:/work"             -w /work             espressif/idf:v5.3.5             bash -lc '
+              set -euo pipefail
+              git config --global --add safe.directory /work
+              idf.py -D IDF_TARGET=esp32c2 build
+              idf.py size
+              idf.py merge-bin
+            '
+
+      - name: Verify merged full-flash image
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f build/merged-binary.bin
+
+      - name: Upload flashable build outputs
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: dragonpwr-esp32c2
+          if-no-files-found: error
+          path: |
+            build/dragonpwr.bin
+            build/merged-binary.bin
+            build/bootloader/bootloader.bin
+            build/partition_table/partition-table.bin
+            build/ota_data_initial.bin
+            build/flasher_args.json
+            build/flash_args
