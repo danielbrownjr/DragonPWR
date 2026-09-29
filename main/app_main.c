@@ -11,6 +11,7 @@
 #include "dp_board.h"
 #include "dp_button.h"
 #include "dp_portal.h"
+#include "dp_printer.h"
 #include "dp_relay.h"
 #include "driver/uart.h"
 #include "esp_err.h"
@@ -163,6 +164,9 @@ void app_main(void)
     ESP_ERROR_CHECK(configure_network_identity());
     ESP_ERROR_CHECK(dc_wifi_start());
     ESP_ERROR_CHECK(dp_portal_start());
+    // Before the image is confirmed, so a build whose printer client crashes
+    // the device at start still rolls back. Never fails the boot itself.
+    dp_printer_start();
     confirm_running_image();
     // Everything that runs today is up by here, so this is the baseline any
     // new feature has to fit into. Live numbers are in /api/v2/state.

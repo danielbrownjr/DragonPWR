@@ -94,17 +94,38 @@ cd C:\Users\danie\Coding\DragonPWR
 ```
 
 ```bash
-idf.py -D IDF_TARGET=esp32c2 build
+idf.py build                                            # full: both printer clients
+idf.py -B build-lite      -D DP_VARIANT=lite      build   # plug only, smallest
+idf.py -B build-moonraker -D DP_VARIANT=moonraker build   # + Klipper
+idf.py -B build-bambu     -D DP_VARIANT=bambu     build   # + Bambu
 ```
 
+`DP_VARIANT` picks which printer clients are linked into the image; the printer
+itself is still chosen at runtime in Device setup, from the ones the build
+carries. A left-out client is not in the image at all:
+
+| Variant | Image | Static RAM | Carries |
+|---|---|---|---|
+| `lite` | 795 K | 98.5 KB | plug only |
+| `moonraker` | 900 K | 100.5 KB | Klipper |
+| `bambu` | 906 K | 100.6 KB | Bambu Lab |
+| `full` (default) | 925 K | 101.1 KB | both |
+
+Most of the step from lite to moonraker is mbedTLS: Moonraker is plain `ws://`,
+but the websocket client always links its TLS transport and has no option to
+leave it out. Each build directory keeps its own `sdkconfig`, generated from
+`sdkconfig.defaults`, so an old one in the source tree no longer shadows the
+defaults - delete any `sdkconfig` left over at the top level.
+
 To flash and watch the console over the CH340 bridge (shows up as a COM
-port, e.g. `COM6`): `idf.py -p COM6 flash`. The console UART on this board
+port, e.g. `COM6`): `idf.py -p COM6 flash`, with the same `-B` and
+`-D DP_VARIANT` as the build. The console UART on this board
 is subject to a sporadic hardware quirk — see docs/BENCH_NOTES.md,
 2026-09-14 session — where it sometimes comes up at 74880 baud instead of
 the configured 115200; retry the reset or open the monitor at 74880 if a
 log looks like garbage.
 
-The current image is about 793 K against a 1280 K app slot. `dependencies.lock`
+The app slot is 1280 K. `dependencies.lock`
 is committed: `dragon-core` is pinned by tag and the lock is what makes that
 reproducible.
 
@@ -146,6 +167,31 @@ stay readable. Clear it by posting `{"token":""}` with the current token.
   serial**, which also forgets Wi-Fi:
   `python -m esptool --chip esp32c2 -p COM6 erase_region 0x9000 0x5000`
 
+## Printer source
+
+DragonPWR can follow one printer, picked in **Settings > Device setup > Printer**
+and applied after a restart:
+
+| | |
+|---|---|
+| **None - plug only** | The default. No printer connection. |
+| **Klipper (Moonraker)** | Moonraker's websocket, plain HTTP. Moonraker must trust the plug's IP (`[authorization] trusted_clients`). |
+| **Bambu Lab (experimental)** | LAN-mode MQTT over TLS, read-only. Its TLS session needs more memory than this chip reliably has spare; the plug refuses to start it when the heap is too low and says so on `/power`. |
+
+Today the source is reported, not acted on: `/power` and `/api/v2/state` show the
+printer's state and temperatures. The mid-print interlock comes next.
+
+To try the Klipper source without a printer, run the fake Moonraker on any
+machine on the LAN and point the plug at it:
+
+```
+pip install websockets
+python tools/fakermoonyraker.py
+```
+
+Type `print`, `pause`, `bed 60`, `shutdown` and so on to drive it; the commands
+are listed at the top of the file.
+
 ## Layout
 
 | Path | |
@@ -153,7 +199,9 @@ stay readable. Clear it by posting `{"token":""}` with the current token.
 | `main/` | `app_main` — brings the outputs up, then hands off to dragon-core |
 | `components/dp_board/` | The pin map, and the only place polarity is written down |
 | `components/dp_relay/` | Mains + USB1 outputs, safe boot state, restore policy |
-| `components/dp_portal/` | Product API v2, stock-compatible routes, safety guards |
+| `components/dp_portal/` | Product API v2, stock-compatible routes, safety guards, `/power` |
+| `components/dp_printer/` | Printer source selection (none / Moonraker / Bambu) and one status for all |
+| `tools/` | `fakermoonyraker.py`, a fake Moonraker for testing the Klipper source without a printer |
 | `analysis/` | Static-analysis tooling for the stock firmware, and the backup verifier |
 
 ## Documentation

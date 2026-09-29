@@ -51,3 +51,22 @@ CONFIG_ESP_WIFI_MGMT_SBUF_NUM=16
 # A-MPDU holds RX buffers for reordering; worth it for throughput only.
 CONFIG_ESP_WIFI_AMPDU_RX_ENABLED=n
 CONFIG_ESP_WIFI_AMPDU_TX_ENABLED=n
+
+# Bambu (dc_bambu) connects to the printer's own MQTT broker, whose certificate
+# is self-signed per printer with CN = serial, while DragonPWR connects by IP.
+# There is no CA to verify against, so esp-tls must be allowed to skip server
+# verification; without this dc_bambu cannot connect at all. The link is
+# encrypted but not authenticated: something already on the LAN could pose as
+# the printer and see the access code. dc_bambu refuses to compile without
+# these, and it is compiled in every DP_VARIANT - only linked into bambu and
+# full - so they are set for all variants; where dc_bambu is not linked they
+# have no TLS connection to apply to (Moonraker is plain ws://).
+CONFIG_ESP_TLS_INSECURE=y
+CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y
+# mbedTLS for low memory: allocate record buffers only while in use, and a
+# 4 KB outgoing record - DragonPWR only ever sends small MQTT packets. The
+# incoming side stays at 16 KB; that is the printer's choice, not ours.
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+CONFIG_MBEDTLS_DYNAMIC_FREE_CONFIG_DATA=y
+CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN=y
+CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=4096
