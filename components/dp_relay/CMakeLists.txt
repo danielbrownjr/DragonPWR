@@ -6,5 +6,5 @@ endif()
 idf_component_register(
     SRCS "${DP_RELAY_SOURCE}"
     INCLUDE_DIRS "include"
-    REQUIRES dp_board driver nvs_flash
+    REQUIRES dp_board esp_driver_gpio nvs_flash
 )

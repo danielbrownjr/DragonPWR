@@ -6,5 +6,5 @@ endif()
 idf_component_register(
     SRCS "${DP_BUTTON_SOURCE}"
     INCLUDE_DIRS "include"
-    REQUIRES dp_board dp_relay driver
+    REQUIRES dp_board dp_relay esp_driver_gpio
 )
