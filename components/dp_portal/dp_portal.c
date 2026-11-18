@@ -22,6 +22,7 @@
 #include "freertos/task.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "sdkconfig.h"
 
 static const char *TAG = "dp_portal";
 
@@ -286,8 +287,10 @@ static esp_err_t info_get(httpd_req_t *req)
     // surface in dc_ui yet, so today this only selects the common setup and
     // recovery overlay - see docs/ROADMAP.md.
     cJSON *caps = cJSON_AddArrayToObject(root, "capabilities");
+#if !defined(CONFIG_IDF_TARGET_ESP32C3)
     cJSON_AddItemToArray(caps, cJSON_CreateString("power_switch"));
     cJSON_AddItemToArray(caps, cJSON_CreateString("usb_switch"));
+#endif
     cJSON_AddItemToArray(caps, cJSON_CreateString("polling"));
 
     cJSON *ui = cJSON_AddObjectToObject(root, "ui");
@@ -301,10 +304,16 @@ static esp_err_t state_get(httpd_req_t *req)
 {
     cJSON *root = cJSON_CreateObject();
     cJSON *outputs = cJSON_AddObjectToObject(root, "outputs");
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+    cJSON_AddNullToObject(outputs, "mains");
+    cJSON_AddNullToObject(outputs, "usb1");
+    cJSON_AddNullToObject(root, "restore");
+#else
     cJSON_AddBoolToObject(outputs, "mains", dp_relay_get(DP_OUTPUT_MAINS));
     cJSON_AddBoolToObject(outputs, "usb1", dp_relay_get(DP_OUTPUT_USB1));
     cJSON_AddStringToObject(root, "restore",
                             dp_restore_to_str(dp_relay_get_restore()));
+#endif
     // No meter and no printer source yet; both are declared null rather than
     // zeroed so a client can tell "not implemented" from "measured zero".
     cJSON_AddNullToObject(root, "meter");
@@ -453,7 +462,7 @@ static esp_err_t stock_set_post(httpd_req_t *req)
 static esp_err_t stock_state_get(httpd_req_t *req)
 {
     // The stock field set, so existing clients parse it unchanged. Meter values
-    // read zero until dp_meter lands; power_state and usb_state are real.
+    // read zero until dp_meter lands. V2 switch state is unavailable.
     cJSON *root = cJSON_CreateObject();
     cJSON_AddNumberToObject(root, "countdown_state", 0);
     cJSON_AddStringToObject(root, "auto_poweroff", "0");
@@ -461,8 +470,13 @@ static esp_err_t stock_state_get(httpd_req_t *req)
     cJSON_AddNumberToObject(root, "voltage", 0);
     cJSON_AddNumberToObject(root, "current", 0);
     cJSON_AddNumberToObject(root, "power", 0);
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+    cJSON_AddNullToObject(root, "power_state");
+    cJSON_AddNullToObject(root, "usb_state");
+#else
     cJSON_AddNumberToObject(root, "power_state", dp_relay_get(DP_OUTPUT_MAINS) ? 1 : 0);
     cJSON_AddNumberToObject(root, "usb_state", dp_relay_get(DP_OUTPUT_USB1) ? 1 : 0);
+#endif
     cJSON_AddNumberToObject(root, "ele", 0);
     return send_json(req, root);
 }
@@ -507,6 +521,9 @@ static cJSON *describe_product(void *ctx)
 {
     (void)ctx;
     cJSON *root = cJSON_CreateObject();
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+    cJSON_AddArrayToObject(root, "sections");
+#else
     cJSON *sections = cJSON_AddArrayToObject(root, "sections");
 
     cJSON *section = cJSON_CreateObject();
@@ -534,6 +551,7 @@ static cJSON *describe_product(void *ctx)
     }
     cJSON_AddItemToArray(fields, field);
     cJSON_AddItemToArray(sections, section);
+#endif
     return root;
 }
 
