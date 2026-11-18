@@ -24,6 +24,8 @@ gaps: where a component or trace is unverified, the docs say so.
 
 | Need | Canonical document |
 |---|---|
+| Set up native IDF and build either board | [Native ESP-IDF development](NATIVE_IDF.md) |
+| Compare IDF versions and inspect build evidence | [2026-11-18 native validation](validation/2026-11-18-native-idf.md) |
 | Install DragonPWR, back up stock, recover a unit | [Installation & Recovery](INSTALLATION_AND_RECOVERY.md) |
 | Understand boot order and component boundaries | [Architecture](ARCHITECTURE.md) |
 | Integrate against the HTTP surface | [API](API.md) |

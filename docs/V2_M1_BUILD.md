@@ -1,6 +1,6 @@
 # Panda PWR V2 M1: build-only C3 foundation
 
-**Status: provisional source implementation, NOT target-build-verified or hardware-accepted.**
+**Status: C2 and C3 target builds verified with IDF v5.3.5; V2 is not hardware-accepted.**
 This document describes the separate V2 ESP32-C3 build profile. It does not
 authorize flashing. See the private 2026-11-18 engineering and factory
 reverse-engineering reports for full provenance; do not put the raw factory
@@ -25,9 +25,13 @@ image or NVS in this repository.
 - V2 `dp_board.h` macros are evidence labels rather than permission to
   configure pins. AC GPIO7/GPIO18 behavior and SET are unqualified.
 
-## Proposed native build commands (not yet executed)
+## Verified native build profiles
 
-Use an installed ESP-IDF **v5.3.5** environment and a clean checkout.
+Use an installed ESP-IDF **v5.3.5** environment.
+The [native development guide](NATIVE_IDF.md) provides an installer and isolated
+build wrapper. The [2026-11-18 validation](validation/2026-11-18-native-idf.md)
+records both successful native builds, artifact sizes/hashes, inactive-driver
+checks and the IDF v6.1.1 upstream compatibility blocker.
 Keep output directories and sdkconfig files distinct; do not reuse a C2
 `sdkconfig` in a C3 build.
 
@@ -45,11 +49,10 @@ idf.py -B build-v2 -D SDKCONFIG=sdkconfig.v2 -D SDKCONFIG_DEFAULTS=sdkconfig.v2.
 idf.py -B build-v2 -D SDKCONFIG=sdkconfig.v2 -D SDKCONFIG_DEFAULTS=sdkconfig.v2.defaults build
 ```
 
-Verify generated `sdkconfig.v2` has the C3 target, 40 MHz crystal,
+The matrix verified the generated C3 configuration has the C3 target, 40 MHz crystal,
 `partitions_v2.csv`, and 4 MiB DIO. Check the partition binary against the
 private V2 report and that the linked application fits each 0x1f0000 app
-slot. If the IDF CLI rejects these invocations or selects another target,
-correct the instructions based on actual tool output before claiming success.
+slot when rebuilding. The matrix verified those offsets and the binary's MD5.
 Do not alter the pinned dragon-core dependencies casually.
 
 ## M1 acceptance checks

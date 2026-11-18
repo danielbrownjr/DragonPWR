@@ -60,6 +60,7 @@ direct_dependencies:
 - dc_portal
 - dc_ui
 - dc_wifi
-manifest_hash: 079a3bf19050f3fbec9fe1fc399f46d82a24603f0495b30632f320534f56d0e1
+- espressif/mdns
+manifest_hash: 3e17ef18c00dd8ec9e19b44fb279440c8729d5e0a565e04431baffb547a5a445
 target: esp32c2
 version: 2.0.0
