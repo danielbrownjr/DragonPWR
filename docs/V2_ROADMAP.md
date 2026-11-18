@@ -7,16 +7,23 @@ Issues define future work, not authorization to implement firmware or operate ha
 
 ## Evidence gate and status
 
-**M0 is open.** No V2 investigation reports or V2-specific factory/recovery
-artifacts were available in the execution workspace. No V2 hardware claim is
-accepted by copying V1 findings. Reconcile the original investigation privately
-before adopting any pin, partition, bootloader, USB or metering assumptions.
-Private reports, stock binaries, NVS, credentials and identifying captures must
-remain outside the public repository and issues.
+**M0 evidence reconciled on 2026-11-18; milestone remains open.** The original V2 reports were located and read in the connected personal Techbenders Drive (DragonPWR evidence folder). Their prior ROM/device observations and image-disassembly findings are now recorded in [#14](https://github.com/danielbrownjr/DragonPWR/issues/14) and [#15](https://github.com/danielbrownjr/DragonPWR/issues/15). This reconciliation did not re-execute hardware measurements or rehash the private binary.
 
-Planning completed: inventory of the current source, branches, issues, PRs and
-milestones; additive roadmap and actionable issue setup. This is inspection and
-planning evidence only, not completion of the V2 hardware evidence baseline.
+The reported full 4 MiB factory flash capture was independently digest-verified on-device at extraction, with an untouched original and analysis copy. Bootloader and app0 image checks passed. **A full backup is not a demonstrated restore or a proven OTA rollback.** Keep factory binaries, NVS, credentials and identifying captures outside this public repository.
+
+### V2 evidence baseline
+
+| Area | Source-supported V2 finding | Confidence / outstanding gate |
+|---|---|---|
+| Silicon | ESP32-C3 AZ rev 1.1; 40 MHz crystal; 4 MiB XMC flash, DIO/80 MHz; ESP-IDF v5.3.5 | ROM and image evidence in private engineering report; separate C3 target required |
+| Boot/flash | Bootloader `0x0`, table `0x8000`, NVS `0x9000/0x5000`, otadata `0xe000/0x2000`; app0 `0x10000/0x1f0000`, app1 `0x200000/0x1f0000`, SPIFFS `0x3f0000/0x10000` | Partition/image integrity validated in prior analysis; app0 VALID, app1 erased; rollback and stock OTA not physically tested |
+| AC control | GPIO7 MCU-high means desired ON; GPIO18 falling-edge interrupt triggers application of queued state | Strong *static* evidence only. Physical source of GPIO18, external driver polarity, pre-app reset state and energized contacts unknown; no live AC actuation authorized |
+| USB outlets | GPIO0 USB-A, GPIO1 USB-C (MCU active high) | Strong static evidence. Actual rail/switch behavior and reset transitions not measured |
+| Meter | UART1 TX2/RX3, 9600 8E1, HLW811x-compatible framing | Strong static evidence. Exact IC, per-unit coefficients, calibration/protection not verified |
+| Other pins | GPIO6 auxiliary output; GPIO4 SPI2 LED candidate; SET among GPIO5/8/9/19 candidates | Static evidence and tentative assignments; do not inherit V1 pin assumptions |
+| Recovery | USB-only WCH serial bridge enabled ESP32-C3 ROM read and full backup | Verified read path in prior session; no restoration or OTA rollback acceptance |
+
+**Development decision:** M1 may proceed under separate implementation authorization with a distinct C3/40 MHz board selection, exact V2 partition definitions and disabled AC actuation. Any implementation that energizes AC or assumes GPIO18 timing must wait for separate physical characterization. #15 owns the unresolved behavior gates; M7 owns full recovery and powered qualification.
 
 ## Milestones and scoped issues
 
@@ -26,7 +33,7 @@ uses output and printer observations; qualification follows implemented capabili
 
 | Gate | Exit criterion | Issues |
 |---|---|---|
-| [V2-M0 — Evidence baseline](https://github.com/danielbrownjr/DragonPWR/milestone/1) | Reconcile V2 identity, private investigation provenance, recovery assets and hardware contracts. Close only after V2-specific evidence is reviewed. | [#14](https://github.com/danielbrownjr/DragonPWR/issues/14), [#15](https://github.com/danielbrownjr/DragonPWR/issues/15) |
+| [V2-M0 — Evidence baseline](https://github.com/danielbrownjr/DragonPWR/milestone/1) | V2 report/backup provenance reconciled; software mappings recorded. Remains open for disposition of physical unknowns and acceptance gates. | [#14](https://github.com/danielbrownjr/DragonPWR/issues/14), [#15](https://github.com/danielbrownjr/DragonPWR/issues/15) |
 | [V2-M1 — Board and safe boot contract](https://github.com/danielbrownjr/DragonPWR/milestone/2) | Define a separate V2 board/build profile and safe initialization from reviewed M0 evidence, preserving V1. | [#16](https://github.com/danielbrownjr/DragonPWR/issues/16), [#17](https://github.com/danielbrownjr/DragonPWR/issues/17) |
 | [V2-M2 — Outputs and local controls](https://github.com/danielbrownjr/DragonPWR/milestone/3) | Implement bounded V2 relay, USB and button behavior with centralized control and explicit restore semantics. | [#18](https://github.com/danielbrownjr/DragonPWR/issues/18) |
 | [V2-M3 — Metering](https://github.com/danielbrownjr/DragonPWR/milestone/4) | Implement and validate the V2 metering transport and conversions only after confirming its chip and interface. | [#19](https://github.com/danielbrownjr/DragonPWR/issues/19), [#20](https://github.com/danielbrownjr/DragonPWR/issues/20) |
@@ -61,7 +68,7 @@ uses output and printer observations; qualification follows implemented capabili
 
 ## M0 acceptance
 
-Both M0 issues must pass against the actual V2 evidence before closing M0:
+Both M0 issues now carry report-backed reconciliation. Close M0 only when remaining physical unknowns have been explicitly resolved or assigned to later qualification gates without implying hardware acceptance:
 
 - Exact product/revision and report provenance, with private recovery coverage
   and integrity checks; never publish full-flash/NVS data.
