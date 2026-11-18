@@ -1,5 +1,10 @@
+if(IDF_TARGET STREQUAL "esp32c3")
+    set(DP_BUTTON_SOURCE "dp_button_v2_inactive.c")
+else()
+    set(DP_BUTTON_SOURCE "dp_button.c")
+endif()
 idf_component_register(
-    SRCS "dp_button.c"
+    SRCS "${DP_BUTTON_SOURCE}"
     INCLUDE_DIRS "include"
-    REQUIRES driver dp_board dp_relay
+    REQUIRES dp_board dp_relay driver
 )
