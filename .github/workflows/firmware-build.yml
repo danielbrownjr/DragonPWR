@@ -11,7 +11,6 @@ on:
       - sdkconfig.v2.defaults
       - main/**
       - components/**
-      - scripts/**
       - .github/workflows/firmware-build.yml
       - .github/workflows/release.yml
   push:
@@ -20,12 +19,9 @@ on:
       - CMakeLists.txt
       - dependencies.lock
       - partitions.csv
-      - partitions_v2.csv
       - sdkconfig.defaults
-      - sdkconfig.v2.defaults
       - main/**
       - components/**
-      - scripts/**
       - .github/workflows/firmware-build.yml
       - .github/workflows/release.yml
   workflow_dispatch:
@@ -41,9 +37,6 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
-
-      - name: Test inactive V2 output contract on host
-        run: python3 scripts/test_v2_inactive.py
 
       - name: Build ESP32-C2 firmware with ESP-IDF 5.3.5
         run: |

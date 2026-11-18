@@ -21,8 +21,8 @@ physical switching, merge or release was performed. V2 actuation remains disable
 - Initial synchronized source: `05255bcd2895a391a031f7f90b5efb5a1da8e13d`.
 - Native four-cell validation input HEAD:
   `45d5e71ee723f76952bc5fdf1c0be63c4c22f984`. Subsequent changes
-  are the artifact verifier, developer/report documentation, CI host-test
-  wiring and a root lock metadata refresh; no C firmware implementation changed.
+  are the artifact verifier, developer/report documentation and a root lock
+  metadata refresh; no C firmware implementation changed.
 - Host: Ubuntu 26.04.1 LTS, Linux x86-64, kernel `7.0.0-43-generic`;
   approximately 3.4 TiB disk free initially, 14 GiB RAM and 4 GiB swap.
 - Initially no native IDF installation was found. System Python 3.14.4,
@@ -96,6 +96,11 @@ c2` or `python scripts/native_build.py v2`. The wrapper executes reconfigure,
 Ninja with four workers, then IDF size reporting. Input-file hashes and HEAD
 are retained per cell. The validated logs are
 `~/.local/state/dragonpwr-idf/build-<version>-<board>-validated.log`.
+
+The optional workflow host-test step and trigger changes were removed after
+GitHub rejected publication with the available OAuth credential's missing
+`workflow` scope. The existing workflow is preserved. The host test remains
+available through the documented local command.
 
 ## Dependency discipline and candidate failure
 
