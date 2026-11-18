@@ -95,6 +95,7 @@ After a successful baseline build, with that IDF still active:
 python scripts/verify_native_build.py build/native/v5.3.5/c2
 python scripts/verify_native_build.py build/native/v5.3.5/v2
 python scripts/test_v2_inactive.py
+python scripts/test_output_api.py
 ```
 
 The verifier checks board source selection, crystal/flash/rollback settings,
@@ -102,7 +103,8 @@ partition binary MD5 and recovered offsets, app/bootloader fit, and V2 archive
 symbols. It writes an artifact size/hash inventory in the profile directory.
 The host test compiles and executes the actual inactive drivers against minimal
 error/log stubs, requiring every AC/USB ON/OFF and restore request to fail.
-Neither command opens a device. No pre-existing automated test suite was found.
+The API host test uses ESP-IDF 5.3.5's cJSON to check the V1 and V2
+capability and output-state response contracts. These checks open no device. No pre-existing automated test suite was found.
 
 ## Dependency and migration boundary
 

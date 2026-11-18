@@ -1,8 +1,7 @@
-# Panda PWR V2 M1: build-only C3 foundation
+# Panda PWR V2 M1: C3 foundation and USB-only acceptance
 
-**Status: C2 and C3 target builds verified with IDF v5.3.5; V2 is not hardware-accepted.**
-This document describes the separate V2 ESP32-C3 build profile. It does not
-authorize flashing. See the private 2026-11-18 engineering and factory
+**Status: C2 and C3 builds verified with IDF v5.3.5. USB-only runtime
+acceptance passed for `ec16bf5`. Electrical qualification remains open.** See the private 2026-11-18 engineering and factory
 reverse-engineering reports for full provenance; do not put the raw factory
 image or NVS in this repository.
 
@@ -65,15 +64,54 @@ Do not alter the pinned dragon-core dependencies casually.
   transition on V2; assess maintenance and startup paths before flashing.
 - Check bootloader, flash parameters, OTA table and image size of each
   generated firmware artifact.
-- No V2 image is flashed or presented as electrically safe before separate
-  physical characterization and explicit deployment authorization.
+- Keep USB-only installation and diagnostics within explicit deployment
+  authorization. Qualify output behavior separately before mains or load testing.
 
-## Deliberately deferred
+## USB-only runtime acceptance, 2026-11-18
 
-GPIO18 edge synchronization/feedback, GPIO7 physical polarity and startup
-transients, USB-A/C output actuation, GPIO6 role, SET wiring, metering readout,
-power protection, calibrated data and recovery/rollback testing.
+- **Installed firmware:** `ec16bf5df411a5027ed0774365eed5842015acfb`,
+  embedded version `0.0.1rc1-13-gec16bf5`, ESP-IDF v5.3.5. Application
+  SHA-256 `f43e04d0fb1f2bde0b4c8dc1f072c8b29f5bc78687e309f7e0895f29e9f9430c`.
+  Bootloader and application passed independent readback verification.
+- **Runtime:** Two controlled USB-only startups selected `app0` at `0x10000`
+  and finished `app_main`. The 25- and 35-second serial captures showed no
+  unexpected reset. The second-stage bootloader logged 4 MiB DIO at 80 MHz.
+  The ROM startup banner and application reset-reason value were absent
+  from both captures. NVS initialization returned successfully and Wi-Fi
+  reported a first-boot PHY calibration save.
+- **Network and heap:** Dan confirmed the Wi-Fi AP, captive portal,
+  `GET /api/v2/info` and `GET /api/v2/state`. His application heap sample
+  was 172,924 B free, 141,724 B minimum free and 114,688 B largest block.
+- **Output command evidence:** The portal's `POST /api/v2/command` and legacy
+  `POST /set` both reach `dp_relay_set`. Restore writes through
+  `POST /api/v1/provisioning/product` call `dp_relay_set_restore`. The
+  linked V2 implementations reject AC and USB1 ON/OFF and every valid
+  restore policy with `ESP_ERR_NOT_SUPPORTED`. V2 startup configures no
+  output or button GPIO through these drivers and applies no saved restore
+  policy. Reset/OTA and slot-selection routes can reboot or change the
+  firmware and were outside runtime testing. No MQTT or WebSocket output
+  handlers were found in the application or its linked portal/network
+  code. The Wi-Fi component's stock MQTT credential migration is storage
+  handling. The host regression executes the actual inactive drivers
+  without GPIO/NVS stubs. No output command was sent to the Panda.
+- **API follow-up:** `42bd693` fixes capability/state reporting. V2
+  advertises only polling, returns null switch and restore state, and
+  disables the power page controls. V1 keeps its existing API fields and
+  values. This separate change was not installed on the Panda. On
+  `ec16bf5`, advertised switch capabilities and placeholder OFF values
+  must not be used as electrical evidence.
+- **Recovery:** ROM download mode responded after the first boot. The
+  private verified 4 MiB backup matched the preflash device digest and
+  preserves the original bootloader, partition table, OTA metadata,
+  NVS, and application. Recovery uses the established USB ROM
+  programming connection to write the raw backup at zero with the flash
+  header settings kept, then verify the full range. No restore was run.
 
-Factory readback and a working USB ROM interface establish a useful recovery
-path but do **not** demonstrate a tested restoration or a safe replacement
-firmware startup.
+## Remaining electrical and recovery qualification
+
+Measure output levels and transients through cold boot, reset, brownout,
+restore, and failed update with independent physical safeguards. GPIO7
+polarity/startup behavior, GPIO18 timing and role, GPIO6/SET, USB-A/C
+switch behavior, and actual relay contact and outlet voltage remain
+unqualified. Metering, protection, OTA fallback, and destructive factory
+restore also remain outside this acceptance.
