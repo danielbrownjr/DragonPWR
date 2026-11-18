@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Build one board in an isolated source/config/dependency/build workspace."""
 import argparse
+import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -25,6 +27,11 @@ def main():
     # Copy only source-controlled files. Each cell owns its generated lock,
     # managed components and sdkconfig; the checkout's pins stay untouched.
     files = subprocess.check_output(["git", "-C", str(root), "ls-files", "-z"]).decode().split("\0")
+    manifest = {}
+    previous = area / "source-files.json"
+    if previous.exists():
+        for name in set(json.loads(previous.read_text())) - set(files):
+            (source / name).unlink(missing_ok=True)
     for name in filter(None, files):
         src = root / name
         if not src.is_file():
@@ -32,6 +39,8 @@ def main():
         dest = source / name
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dest)
+        manifest[name] = hashlib.sha256(src.read_bytes()).hexdigest()
+    previous.write_text(json.dumps(manifest, indent=2) + "\n")
     sha = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
     (area / "source-head.txt").write_text(sha + "\n")
     target, defaults = (("esp32c2", "sdkconfig.defaults") if args.board == "c2"
@@ -39,7 +48,7 @@ def main():
     cmd = ["idf.py", "-C", str(source), "-B", str(area / "out"),
            "-D", f"IDF_TARGET={target}", "-D", f"SDKCONFIG={area / 'sdkconfig'}",
            "-D", f"SDKCONFIG_DEFAULTS={source / defaults}"]
-    print("Source snapshot version is dev; source-head.txt records checkout HEAD.", flush=True)
+    print(f"Input HEAD: {sha}; source-files.json records input byte hashes.", flush=True)
     subprocess.run(cmd + ["reconfigure"], check=True)
     subprocess.run(["ninja", "-C", str(area / "out"), f"-j{args.jobs}"], check=True)
     subprocess.run(cmd + ["size"], check=True)
