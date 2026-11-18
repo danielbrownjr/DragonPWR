@@ -30,7 +30,8 @@ gaps: where a component or trace is unverified, the docs say so.
 | See the hardware pin map and teardown evidence | [Hardware Analysis](HARDWARE_ANALYSIS.md) |
 | Implement or review metering | [Metering Reverse Engineering](METERING_REVERSE_ENGINEERING.md) |
 | Follow real bench evidence chronologically | [Bench Notes](BENCH_NOTES.md) |
-| See planned work and deliberate non-goals | [Roadmap](ROADMAP.md) |
+| See planned work and deliberate non-goals | [V1 roadmap](ROADMAP.md) |
+| Follow the separate proposed V2 planning track | [V2 roadmap](V2_ROADMAP.md) |
 | Reproduce stock-firmware analysis | [analysis/README.md](../analysis/README.md) |
 | Maintain the GitHub Wiki mirror | [Wiki publishing](WIKI.md) |
 | Cut and package firmware releases | [Releasing](RELEASING.md) |
