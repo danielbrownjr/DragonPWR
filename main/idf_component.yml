@@ -10,10 +10,11 @@ dependencies:
     git: https://github.com/justinh-rahb/dragon-core.git
     path: components/dc_wifi
     version: v0.30.0
+  # Pinned to merged upstream dragon-core PR #77 (reviewed DragonPWR UI).
   dc_ui:
     git: https://github.com/justinh-rahb/dragon-core.git
     path: components/dc_ui
-    version: v0.30.0
+    version: 33e6e31f1e83a8184f1e8f028cb03ad19a00380f
   dc_portal:
     git: https://github.com/justinh-rahb/dragon-core.git
     path: components/dc_portal

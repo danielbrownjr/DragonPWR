@@ -283,9 +283,9 @@ static esp_err_t info_get(httpd_req_t *req)
         cJSON_AddStringToObject(slot, "version", other_desc.version);
     }
 
-    // The shared SPA gates optional screens on these. There is no dragonpwr
-    // surface in dc_ui yet, so today this only selects the common setup and
-    // recovery overlay - see docs/ROADMAP.md.
+    // The shared Dragon-family SPA uses these capabilities to decide whether
+    // the DragonPWR dashboard can offer a link to product-owned output controls.
+    // C3 V2 advertises no output control until hardware qualification.
     cJSON *caps = cJSON_AddArrayToObject(root, "capabilities");
 #if !defined(CONFIG_IDF_TARGET_ESP32C3)
     cJSON_AddItemToArray(caps, cJSON_CreateString("power_switch"));
@@ -303,6 +303,12 @@ static esp_err_t info_get(httpd_req_t *req)
 static esp_err_t state_get(httpd_req_t *req)
 {
     cJSON *root = cJSON_CreateObject();
+    // Include current boot identity in every snapshot. dc_ui may stay open
+    // across a reboot or OTA; these values must not go stale between info GETs.
+    const esp_app_desc_t *app = esp_app_get_description();
+    cJSON_AddStringToObject(root, "firmware", app ? app->version : "unknown");
+    cJSON_AddStringToObject(root, "boot_id", s_boot_id);
+    cJSON_AddStringToObject(root, "device_id", s_device_id);
     cJSON *outputs = cJSON_AddObjectToObject(root, "outputs");
 #if defined(CONFIG_IDF_TARGET_ESP32C3)
     cJSON_AddNullToObject(outputs, "mains");
@@ -613,9 +619,9 @@ static esp_err_t factory_reset(void *ctx)
 }
 
 // -------------------------------------------------------------- /power
-// Stopgap control page (components/dp_portal/power.html): dc_ui has no
-// DragonPWR surface yet, so nothing in the SPA can switch the outputs. The page
-// itself is static and open; the command it POSTs is token-gated as usual.
+// Product-local output control page. The shared dc_ui owns the read-only
+// DragonPWR dashboard, while /power owns output commands and authentication.
+// The page is static; its POST requests remain token-gated.
 
 extern const char power_html_start[] asm("_binary_power_html_start");
 
