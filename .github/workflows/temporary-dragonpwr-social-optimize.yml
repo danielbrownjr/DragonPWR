@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   optimize:
-    if: github.event.head_commit.message == 'chore(branding): run one-time social preview optimizer'
+    if: "github.event.head_commit.message == 'chore(branding): run one-time social preview optimizer'"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout branding branch
