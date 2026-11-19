@@ -123,6 +123,10 @@ $env:GIT_CONFIG_COUNT=1; $env:GIT_CONFIG_KEY_0="core.autocrlf"; $env:GIT_CONFIG_
 If it still fails, the component manager's cache holds a CRLF checkout from an
 earlier fetch; clear it too.
 
+Native Linux setup and isolated C2/C3 builds are documented in
+[Native ESP-IDF development](docs/NATIVE_IDF.md), including the
+[four-configuration compatibility matrix](docs/validation/2026-11-18-native-idf.md).
+
 ## Control token
 
 Out of the box, commands are open to anything on the LAN that sends an

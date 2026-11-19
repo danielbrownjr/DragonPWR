@@ -89,13 +89,14 @@ footer a{ color: var(--primary); }
   function render(){
     if(!state || !state.outputs) return;
     [['mains', 'Outlet'], ['usb1', 'USB 1']].forEach(function(o){
-      var on = !!state.outputs[o[0]];
+      var available = typeof state.outputs[o[0]] === 'boolean';
+      var on = state.outputs[o[0]] === true;
       $('c-' + o[0]).className = 'card' + (on ? ' on' : '');
-      $('s-' + o[0]).textContent = on ? 'On' : 'Off';
+      $('s-' + o[0]).textContent = available ? (on ? 'On' : 'Off') : 'Unavailable';
       var b = $('b-' + o[0]);
-      b.textContent = on ? 'Turn off' : 'Turn on';
+      b.textContent = available ? (on ? 'Turn off' : 'Turn on') : 'Control disabled';
       b.className = on ? 'stop' : 'go';
-      b.disabled = busy;
+      b.disabled = busy || !available;
     });
     var names = { off: 'stays off', on: 'switches on', last: 'restores last state' };
     $('restore').textContent = names[state.restore] || state.restore || '--';
@@ -136,7 +137,7 @@ footer a{ color: var(--primary); }
   }
 
   function toggle(output){
-    if(!state || busy) return;
+    if(!state || !state.outputs || busy || typeof state.outputs[output] !== 'boolean') return;
     var on = !state.outputs[output];
     // Cutting mains is the one action here that can hurt a print.
     if(output === 'mains' && !on &&
