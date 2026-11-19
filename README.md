@@ -1,5 +1,7 @@
 # DragonPWR
 
+![DragonPWR mascot and wordmark](docs/branding/dragonpwr-banner.png)
+
 Open firmware for the [BIGTREETECH Panda PWR](https://github.com/bigtreetech/PandaPWR),
 built on the shared [`dragon-core`](https://github.com/justinh-rahb/dragon-core)
 networking and printer-integration components.
