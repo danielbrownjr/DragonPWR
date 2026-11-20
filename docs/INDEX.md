@@ -12,7 +12,8 @@ DragonPWR is at a bench-verified Phase 1 baseline on real Panda PWR hardware:
 - Mains relay and USB1 switching are verified.
 - Safe boot and power-restore policy are implemented.
 - Product API, stock-compatible routes, control-token authorization, event log,
-  browser OTA, maintenance routes and the temporary `/power` UI are implemented.
+  browser OTA, maintenance routes, shared DragonPWR dashboard and permanent
+  product-owned `/power` control/recovery UI are implemented.
 - The HLW8112 metering hardware and stock metering algorithm are recovered, but
   `dp_meter` is not implemented yet.
 - Printer integration and the print-aware power interlock are not implemented yet.
