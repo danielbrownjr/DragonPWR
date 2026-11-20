@@ -24,7 +24,13 @@ simultaneous session count since the HTTP portal started; `opened` and
 `closed` are cumulative socket callback counts. `opened_at_limit` counts
 opens when the active count reaches the configured limit (4).
 `closed_at_limit` counts closes while the active count was at the limit.
-**Neither counter proves that LRU evicted a session.**
+**Neither counter proves that LRU evicted a session.** A diagnostic sample
+taken while all four browser sessions are occupied can itself force an LRU
+close before the diagnostic request is accepted. That sample can increment
+both capacity counters and produce a contemporaneous browser reset/104
+warning. Treat capacity-counter changes at the sampling instant as
+measurement-induced until independently corroborated; don't blindly
+subtract one, since concurrent traffic can cause additional closes.
 
 `heap.free`, `heap.min_free`, and `heap.largest_block` measure
 8-bit-capable heap in bytes. The minimum is system-wide since boot.
