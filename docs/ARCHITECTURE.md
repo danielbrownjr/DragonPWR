@@ -31,7 +31,7 @@ prerequisites for driving the mains relay into its safe boot state.
 | `dp_board` | Panda PWR GPIO assignments and polarity; the single board-hardware contract |
 | `dp_relay` | Mains and USB1 outputs, safe initialization, readback and restore policy |
 | `dp_button` | Physical-input handling; GPIO10 is the confirmed button, GPIO6 is observed but deliberately not allowed to switch mains |
-| `dp_portal` | DragonPWR API v2 routes, stock-compatible routes, auth, maintenance guards and temporary `/power` UI |
+| `dp_portal` | DragonPWR API v2 routes, stock-compatible routes, auth, maintenance guards and permanent product-owned `/power` UI |
 | future `dp_meter` | HLW8112 transport, configuration interpretation, conversion and energy accounting |
 | future printer policy | Printer-aware interlocks and automatic shutdown policy |
 

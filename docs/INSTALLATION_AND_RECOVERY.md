@@ -78,15 +78,22 @@ After a successful DragonPWR boot:
 2. Confirm `/api/v2/info` reports product `dragonpwr`.
 3. Confirm `/api/v2/state` reports the expected relay states and sane heap
    headroom.
-4. Use `/power` for the temporary DragonPWR-specific control page until the
-   shared `dc_ui` gains a dedicated DragonPWR surface.
-5. Keep the mains output off while validating maintenance operations.
+4. Use the shared `/` DragonPWR dashboard for read-only status and setup, and
+   the product-owned `/power` page for supported output controls and recovery.
+   V2 output states remain unqualified and controls are disabled.
+5. Keep the mains output off while validating maintenance operations. The
+   `/power` Restart and Boot inactive slot buttons require current matching
+   boot identity and a known mains-off state; unknown states disable them.
+   Firmware authorization and the mains-off guard remain authoritative.
 
 ## 5. Browser OTA after DragonPWR is installed
 
 DragonPWR inherits browser OTA from dragon-core. Rebooting operations are guarded:
 the mains outlet must be off before firmware update, restart, factory reset or
-booting the inactive slot.
+booting the inactive slot. Shared setup provides firmware upload and factory reset;
+`/power` provides token-protected Restart and Boot inactive slot actions when
+supported. These UI controls cannot establish electrical safety on unqualified V2
+hardware, and remain disabled there.
 
 Rollback protection also depends on the **bootloader**, not just the application.
 The original bench unit's bootloader was built without rollback support. One

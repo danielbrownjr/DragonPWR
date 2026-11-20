@@ -20,7 +20,7 @@ dependencies:
       type: git
     version: 8d5a61de8544a5b82cc3c6d9c7dc593ce06bb8bd
   dc_ui:
-    component_hash: c18c6a1838670ca906b8efbf54b48e3d6640c14e9dd127d640392dc7df1a6348
+    component_hash: b83f5fa81779f7898292c4ea863a93c95413886e6bda20f08923249edc17e4f2
     dependencies:
     - name: idf
       version: '>=5.3'
@@ -28,7 +28,7 @@ dependencies:
       git: https://github.com/justinh-rahb/dragon-core.git
       path: components/dc_ui
       type: git
-    version: 8d5a61de8544a5b82cc3c6d9c7dc593ce06bb8bd
+    version: 33e6e31f1e83a8184f1e8f028cb03ad19a00380f
   dc_wifi:
     component_hash: b2ce5eb0f997c23db0c4140a9d3d7653a0e5a4c8b571119fbb4c7c0e10238b17
     dependencies:
@@ -61,6 +61,6 @@ direct_dependencies:
 - dc_ui
 - dc_wifi
 - espressif/mdns
-manifest_hash: 3e17ef18c00dd8ec9e19b44fb279440c8729d5e0a565e04431baffb547a5a445
+manifest_hash: a711f910e3ec08801be623cb12326c9320187b3d8bee430a8177d1dea20cf9e4
 target: esp32c2
 version: 2.0.0

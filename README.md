@@ -18,8 +18,8 @@ Read [docs/HARDWARE_ANALYSIS.md](docs/HARDWARE_ANALYSIS.md) before you wire
 anything to mains.
 
 Once installed, the outlet is switched from `http://<device>/power`. The
-device's main page is the shared family UI, which has no DragonPWR dashboard
-yet; its Settings screen works.
+device's main page is the shared Dragon-family UI with a dedicated DragonPWR
+power-and-health dashboard and common setup/recovery interface.
 
 ## Hardware
 
