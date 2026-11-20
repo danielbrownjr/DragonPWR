@@ -51,6 +51,9 @@ Current Phase 1 state:
 
 ```json
 {
+  "firmware": "dragonpwr-version",
+  "device_id": "device-identifier",
+  "boot_id": "boot-session-identifier",
   "outputs": {"mains": false, "usb1": false},
   "restore": "off",
   "meter": null,
@@ -81,8 +84,12 @@ Returns the current RAM event-log snapshot:
 
 ### `GET /power`
 
-Temporary DragonPWR-specific browser control page. The page itself is open; its
-commands use the authenticated command route.
+Permanent DragonPWR-owned control and recovery page, complementary to the shared
+read-only dashboard at `/`. The page is publicly readable, but output commands,
+Restart and Boot inactive slot use authenticated firmware routes. Recovery buttons
+require matching boot identities and an observed mains-off state; an unknown state
+(including V2) is not permission to reboot. The firmware independently enforces
+authorization and the maintenance safety guard.
 
 ## Mutation routes
 
