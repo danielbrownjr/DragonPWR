@@ -75,7 +75,7 @@ or bypass the product's authorization and output safety policy.
 
 **`/power` remains DragonPWR-owned**, with V1 outlet and USB 1 switching,
 capability-gated V2 unavailable states, live heap metrics, and authenticated
-Restart / Boot inactive slot actions. The latter are shown or enabled only when
+Restart / Boot inactive slot actions. The latter are enabled only when
 confirmed safe by current device information and a known mains-off state; the
 firmware independently enforces the maintenance authorization and mains-off gate.
 The inactive-slot action is unavailable without a readable alternate image.
