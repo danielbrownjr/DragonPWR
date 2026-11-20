@@ -66,28 +66,24 @@ Consequences:
 
 `CONFIG_COMPILER_OPTIMIZATION_SIZE=y` from the start, as DragonStatus does.
 
-## Upstream dependency: there is no DragonPWR surface in `dc_ui` yet
+## Shared DragonPWR dashboard and product-owned controls
 
-The shared family SPA recognises `dragonbreath`, `dragonvent`, `dragonstatus`
-and `dragonwheeze`. A `dragonpwr` product descriptor gets the common setup and
-provisioning overlay — Wi-Fi, printer source, OTA, logs, factory reset — but not
-a dedicated dashboard.
+The upstream `dragon-core` `dc_ui` component now provides a dedicated
+`dragonpwr` dashboard. It displays read-only status and routes users to the
+shared setup/firmware/log surfaces. It does not expose DragonBreath heater controls
+or bypass the product's authorization and output safety policy.
 
-So the UI work splits in two: DragonPWR ships `/api/v2/info`, `/api/v2/state` and
-the command routes from day one, and the matching surface is a **contribution to
-dragon-core's `dc_ui`**, not something this repo can carry alone. Phase 1 is
-usable without it.
+**`/power` remains DragonPWR-owned**, with V1 outlet and USB 1 switching,
+capability-gated V2 unavailable states, live heap metrics, and authenticated
+Restart / Boot inactive slot actions. The latter are shown or enabled only when
+confirmed safe by current device information and a known mains-off state; the
+firmware independently enforces the maintenance authorization and mains-off gate.
+The inactive-slot action is unavailable without a readable alternate image.
+Factory reset remains available through shared setup. Browser restart and
+slot switching are not substitutes for serial/full-flash recovery.
 
-Meanwhile a `dragonpwr` device lands on DragonBreath's dashboard, and two
-stopgaps cover the gap:
-
-- **`/power`** (`components/dp_portal/power.html`): Outlet and USB 1 toggles,
-  live state and heap, in the family look and token transport. Delete it once
-  `dc_ui` has a DragonPWR view.
-- **DragonBreath's Settings contract is served**, so the shared Settings screen
-  works: event log (`/api/v2/logs`), Maintenance (firmware, device ID, boot ID,
-  inactive slot) and its Restart, Factory reset and Boot inactive slot buttons.
-  The dashboard itself still shows DragonBreath's chamber readout, all dashes.
+The frontend polls live state every two seconds but refreshes device information
+only on startup, after a failed request, or when the boot identity changes.
 
 ## Phase 0 — Bench confirmation
 
@@ -178,9 +174,9 @@ browser."
       is not (every boot logs `image new`), so it needs one serial flash of a
       current build before that protection is real. Every boot logs its slot,
       OTA state and reset reason to the event log
-- [x] `/power` control page, and DragonBreath's Settings contract (event log,
-      IDs, inactive slot, Restart / Factory reset / Boot inactive slot) - see
-      the upstream section above
+- [x] Dedicated shared DragonPWR status dashboard and product-owned `/power`
+      controls, including guarded Restart / Boot inactive slot actions. Shared
+      setup supplies firmware upload, event logs and factory reset; see above.
 - [x] Heap reporting, and RAM tuning that took the low-water mark from 4 KB
       to 56 KB - see the constraints table
 
@@ -248,8 +244,9 @@ The three features that justify the product.
       `dc_lighting` includes `led_strip_rmt.h` unconditionally: expect to fix
       that upstream before it compiles for this target
 - [ ] Printer-state colours reusing the family's existing lighting contract
-- [ ] `dragonpwr` surface contributed to `dc_ui`: relay + USB toggles, live
-      power, per-print energy, policy editing
+- [x] Read-only `dragonpwr` dashboard contributed upstream to `dc_ui`.
+- [ ] Future shared presentation of measured power, per-print energy and policy
+      editing (V1 switching and recovery remain product-owned on `/power`).
 
 ## Deferred and non-goals
 
