@@ -68,6 +68,10 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .meta code{display:block;font-size:12px;overflow-wrap:anywhere;margin-top:3px}
 #message{min-height:1.4em;margin:10px 0;color:var(--muted)}
 #message.err{color:var(--bad)}
+.maintenance-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.maintenance-actions button{flex:1;min-width:170px}
+#maintenance-message{min-height:1.4em;margin:12px 0 0;color:var(--muted)}
+#maintenance-message.err{color:var(--bad)}
 footer{font-size:12px;color:var(--muted);margin-top:18px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
 @media(max-width:620px){header{align-items:flex-start}nav{gap:10px}.grid,.metrics{grid-template-columns:1fr}.meta{grid-template-columns:1fr}.panel{padding:16px}.wrap{padding:16px 12px 32px}}
 </style>
@@ -97,6 +101,13 @@ footer{font-size:12px;color:var(--muted);margin-top:18px;display:flex;justify-co
   <div class="metrics"><div class="metric"><small>Free memory</small><b id="free">—</b></div><div class="metric"><small>Minimum free</small><b id="minimum">—</b></div><div class="metric"><small>Largest block</small><b id="largest">—</b></div></div>
   <div class="meta"><div><label>Firmware</label><code id="firmware">—</code></div><div><label>Device ID</label><code id="device-id">—</code></div><div><label>Boot session</label><code id="boot-id">—</code></div><div><label>Restore policy</label><code id="restore">—</code></div></div>
 </section>
+<section class="panel" aria-labelledby="maintenance-title">
+  <h2 id="maintenance-title">Recovery &amp; maintenance</h2>
+  <p class="caption">Restarting interrupts power control. Switch the AC outlet off first. An unknown outlet state is not proof that it is off.</p>
+  <div class="meta"><div><label>Inactive firmware slot</label><code id="inactive-slot">Unavailable</code></div></div>
+  <div class="maintenance-actions"><button id="restart-button" disabled>Restart device</button><button id="boot-inactive-button" disabled>Boot inactive slot</button></div>
+  <p id="maintenance-message" role="status" aria-live="polite"></p>
+</section>
 <footer><span>DragonPWR · Dragon-family firmware</span><span>Live status updates every 2 seconds</span></footer>
 </div>
 <script>
@@ -105,7 +116,7 @@ footer{font-size:12px;color:var(--muted);margin-top:18px;display:flex;justify-co
 function $(id){return document.getElementById(id)}
 function msg(s,err){$('message').textContent=s||'';$('message').className=err?'err':''}
 function token(){try{return localStorage.getItem('db_tok')||'web'}catch(e){return 'web'}}
-var info=null,state=null,busy=false,connected=false;
+var info=null,state=null,busy=false,maintenanceBusy=false,connected=false;
 function allowed(name){
   return !!(connected&&info&&Array.isArray(info.capabilities)&&
     info.capabilities.indexOf(name==='mains'?'power_switch':'usb_switch')!==-1&&
@@ -133,6 +144,15 @@ function draw(){
   $('free').textContent=memory(h.free);$('minimum').textContent=memory(h.min_free);
   $('largest').textContent=memory(h.largest_block);
   $('restore').textContent=state&&typeof state.restore==='string'?state.restore:'Unavailable';
+  var slot=info&&info.inactive_slot;
+  $('inactive-slot').textContent=slot&&typeof slot.label==='string'&&typeof slot.project==='string'&&typeof slot.version==='string'?
+    slot.label+' · '+slot.project+' '+slot.version:'Unavailable';
+  // Unknown V2 outputs or stale boot identity cannot establish a safe mains-off state.
+  var canMaintain=connected&&!busy&&!maintenanceBusy&&info&&state&&
+    info.boot_id===state.boot_id&&state.outputs&&state.outputs.mains===false&&
+    Array.isArray(info.capabilities)&&info.capabilities.indexOf('power_switch')!==-1;
+  $('restart-button').disabled=!canMaintain;
+  $('boot-inactive-button').disabled=!canMaintain||!slot;
 }
 function connection(ok){
   connected=ok;
@@ -140,18 +160,58 @@ function connection(ok){
   $('connection-text').textContent=ok?'Connected':'Reconnecting';
   draw();
 }
+function getJSON(path){return fetch(path,{cache:'no-store'}).then(function(r){if(!r.ok)throw Error(path);return r.json()})}
 function load(){
-  Promise.all([
-    fetch('/api/v2/info',{cache:'no-store'}).then(function(r){if(!r.ok)throw Error('info');return r.json()}),
-    fetch('/api/v2/state',{cache:'no-store'}).then(function(r){if(!r.ok)throw Error('state');return r.json()})
-  ]).then(function(data){
-    info=data[0];state=data[1];
+  getJSON('/api/v2/state').then(function(next){
+    // Fetch device information only at startup, after errors, or on a new boot.
+    if(!info||!next.boot_id||info.boot_id!==next.boot_id){
+      return getJSON('/api/v2/info').then(function(nextInfo){
+        if(!nextInfo.boot_id||nextInfo.boot_id!==next.boot_id)throw Error('boot changed during refresh');
+        info=nextInfo;
+        state=next;
+      });
+    }
+    state=next;
+  }).then(function(){
     $('firmware').textContent=info.firmware||'—';
     $('device-id').textContent=info.device_id||'—';
     $('boot-id').textContent=info.boot_id||'—';
     connection(true);
   }).catch(function(){info=null;state=null;connection(false)})
     .then(function(){setTimeout(load,2000)});
+}
+function maintenanceMessage(message,error){
+  $('maintenance-message').textContent=message||'';
+  $('maintenance-message').className=error?'err':'';
+}
+function maintenancePost(path,retried){
+  var t=token();
+  return fetch(path,{method:'POST',headers:{'X-Dragon-Auth':t,'X-DragonBreath-Auth':t}}).then(function(r){
+    return r.json().catch(function(){return {}}).then(function(j){
+      if(r.status===403&&!retried){
+        try{localStorage.removeItem('db_tok')}catch(e){}
+        var entered=prompt('Control token');
+        if(entered){try{localStorage.setItem('db_tok',entered)}catch(e){};return maintenancePost(path,true)}
+      }
+      if(!r.ok)throw j;
+      return j;
+    });
+  });
+}
+function maintenanceAction(which){
+  if(maintenanceBusy||busy||!connected||!info||!state||
+     info.boot_id!==state.boot_id||!state.outputs||state.outputs.mains!==false||
+     !Array.isArray(info.capabilities)||info.capabilities.indexOf('power_switch')===-1)return;
+  if(which==='boot-inactive'&&!info.inactive_slot)return;
+  var promptText=which==='boot-inactive'?
+    'Boot the inactive firmware slot? The device will restart, and the other firmware may not support rollback.':
+    'Restart DragonPWR? This temporarily interrupts power control.';
+  if(!confirm(promptText))return;
+  maintenanceBusy=true;draw();maintenanceMessage('Requesting '+(which==='boot-inactive'?'slot switch':'restart')+'…');
+  maintenancePost(which==='boot-inactive'?'/api/v2/boot-inactive':'/api/v2/restart',false)
+    .then(function(){maintenanceMessage('Request accepted. Waiting for device to reconnect.');info=null;state=null;connection(false)})
+    .catch(function(err){maintenanceMessage('Request refused: '+((err&&(err.message||err.error))||'no response'),true)})
+    .then(function(){maintenanceBusy=false;draw()});
 }
 function send(output,on,retried){
   var t=token();
@@ -180,6 +240,8 @@ function toggle(name){
 }
 $('mains-button').addEventListener('click',function(){toggle('mains')});
 $('usb1-button').addEventListener('click',function(){toggle('usb1')});
+$('restart-button').addEventListener('click',function(){maintenanceAction('restart')});
+$('boot-inactive-button').addEventListener('click',function(){maintenanceAction('boot-inactive')});
 load();
 })();
 </script>
