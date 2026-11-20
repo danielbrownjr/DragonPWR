@@ -43,6 +43,9 @@ jobs:
       - name: Check dc_ui dependency pin and lock
         run: python3 tests/check_dc_ui_pin.py
 
+      - name: Check DragonPWR recovery UI behavior
+        run: node tests/check_power_recovery.mjs
+
       - name: Build ESP32-C2 firmware with ESP-IDF 5.3.5
         run: |
           docker run --rm             -v "$GITHUB_WORKSPACE:/work"             -w /work             espressif/idf:v5.3.5             bash -lc '
