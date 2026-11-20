@@ -136,7 +136,7 @@ function draw(){
     $(name+'-text').textContent=label;
     $(name+'-status').className='state '+(active?(on?'on':'live'):'unknown');
     var button=$(name+'-button');
-    button.disabled=busy||!active;
+    button.disabled=busy||maintenanceBusy||!active;
     button.textContent=active?(on?'Turn off':'Turn on'):'Control disabled';
     button.className=active?(on?'danger':'primary'):'';
   });
@@ -186,14 +186,31 @@ function maintenanceMessage(message,error){
   $('maintenance-message').textContent=message||'';
   $('maintenance-message').className=error?'err':'';
 }
-function maintenancePost(path,retried){
-  var t=token();
-  return fetch(path,{method:'POST',headers:{'X-Dragon-Auth':t,'X-DragonBreath-Auth':t}}).then(function(r){
+function validateMaintenanceSession(expectedBoot){
+  // Revalidate after each blocking browser dialog, before a recovery POST.
+  // Firmware still independently enforces authentication and its mains-off guard.
+  return getJSON('/api/v2/state').then(function(fresh){
+    if(!connected||!info||!state||!expectedBoot||info.boot_id!==expectedBoot||
+       state.boot_id!==expectedBoot||fresh.boot_id!==expectedBoot||
+       !fresh.outputs||fresh.outputs.mains!==false||
+       !Array.isArray(info.capabilities)||info.capabilities.indexOf('power_switch')===-1){
+      info=null;state=null;connection(false);
+      throw Error('Device session or safe outlet state changed; reconnect and retry');
+    }
+    state=fresh;
+    return fresh;
+  });
+}
+function maintenancePost(path,retried,expectedBoot){
+  return validateMaintenanceSession(expectedBoot).then(function(){
+    var t=token();
+    return fetch(path,{method:'POST',headers:{'X-Dragon-Auth':t,'X-DragonBreath-Auth':t}});
+  }).then(function(r){
     return r.json().catch(function(){return {}}).then(function(j){
       if(r.status===403&&!retried){
         try{localStorage.removeItem('db_tok')}catch(e){}
         var entered=prompt('Control token');
-        if(entered){try{localStorage.setItem('db_tok',entered)}catch(e){};return maintenancePost(path,true)}
+        if(entered){try{localStorage.setItem('db_tok',entered)}catch(e){};return maintenancePost(path,true,expectedBoot)}
       }
       if(!r.ok)throw j;
       return j;
@@ -205,12 +222,14 @@ function maintenanceAction(which){
      info.boot_id!==state.boot_id||!state.outputs||state.outputs.mains!==false||
      !Array.isArray(info.capabilities)||info.capabilities.indexOf('power_switch')===-1)return;
   if(which==='boot-inactive'&&!info.inactive_slot)return;
+  var expectedBoot=info.boot_id;
+  var slot=info.inactive_slot;
   var promptText=which==='boot-inactive'?
-    'Boot the inactive firmware slot? The device will restart, and the other firmware may not support rollback.':
+    'Boot '+slot.label+' ('+slot.project+' '+slot.version+')? The device will restart, and the other firmware may not support rollback.':
     'Restart DragonPWR? This temporarily interrupts power control.';
   if(!confirm(promptText))return;
   maintenanceBusy=true;draw();maintenanceMessage('Requesting '+(which==='boot-inactive'?'slot switch':'restart')+'…');
-  maintenancePost(which==='boot-inactive'?'/api/v2/boot-inactive':'/api/v2/restart',false)
+  maintenancePost(which==='boot-inactive'?'/api/v2/boot-inactive':'/api/v2/restart',false,expectedBoot)
     .then(function(){maintenanceMessage('Request accepted. Waiting for device to reconnect.');info=null;state=null;connection(false)})
     .catch(function(err){maintenanceMessage('Request refused: '+((err&&(err.message||err.error))||'no response'),true)})
     .then(function(){maintenanceBusy=false;draw()});
@@ -232,7 +251,7 @@ function send(output,on,retried){
   });
 }
 function toggle(name){
-  if(busy||!allowed(name))return;
+  if(busy||maintenanceBusy||!allowed(name))return;
   var on=!state.outputs[name];
   if(name==='mains'&&!on&&!confirm('Turn off the AC outlet? This cuts power to whatever is connected.'))return;
   busy=true;draw();msg('');
