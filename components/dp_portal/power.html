@@ -165,6 +165,8 @@ function load(){
   getJSON('/api/v2/state').then(function(next){
     // Fetch device information only at startup, after errors, or on a new boot.
     if(!info||!next.boot_id||info.boot_id!==next.boot_id){
+      // Immediately revoke prior controls while refreshing a changed boot session.
+      info=null;state=null;connection(false);
       return getJSON('/api/v2/info').then(function(nextInfo){
         if(!nextInfo.boot_id||nextInfo.boot_id!==next.boot_id)throw Error('boot changed during refresh');
         info=nextInfo;
