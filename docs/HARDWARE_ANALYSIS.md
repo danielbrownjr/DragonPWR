@@ -65,20 +65,20 @@ reproduced here.
 > Treat any energised measurement on it as potentially lethal. Do the
 > continuity mapping below unpowered first.
 
-<a href="images/hardware/panda-pwr-board-overview.jpg"><img src="images/hardware/panda-pwr-board-overview.jpg" alt="Panda PWR Rev 1 PCB, component side" width="770"></a>
+<a href="images/hardware/v1/panda-pwr-board-overview.jpg"><img src="images/hardware/v1/panda-pwr-board-overview.jpg" alt="Panda PWR Rev 1 PCB, component side" width="770"></a>
 
 *Overall Panda PWR Rev 1 PCB after enclosure opening.*
 
-<a href="images/hardware/panda-pwr-board-angle.jpg"><img src="images/hardware/panda-pwr-board-angle.jpg" alt="Angled view of the HLK-20M05, relay, sensing magnetics, USB and controller end" width="800"></a>
+<a href="images/hardware/v1/panda-pwr-board-angle.jpg"><img src="images/hardware/v1/panda-pwr-board-angle.jpg" alt="Angled view of the HLK-20M05, relay, sensing magnetics, USB and controller end" width="800"></a>
 
 *Angled view: HLK-20M05, relay, sensing magnetics, USB ports and the controller
 end.*
 
-<a href="images/hardware/panda-pwr-sensing-section.jpg"><img src="images/hardware/panda-pwr-sensing-section.jpg" alt="Mains protection and sensing section" width="600"></a>
+<a href="images/hardware/v1/panda-pwr-sensing-section.jpg"><img src="images/hardware/v1/panda-pwr-sensing-section.jpg" alt="Mains protection and sensing section" width="600"></a>
 
 *Mains protection and sensing section.*
 
-<a href="images/hardware/panda-pwr-hlw8112-metering-ic.jpg"><img src="images/hardware/panda-pwr-hlw8112-metering-ic.jpg" alt="HLW8112 package marking" width="700"></a>
+<a href="images/hardware/v1/panda-pwr-hlw8112-metering-ic.jpg"><img src="images/hardware/v1/panda-pwr-hlw8112-metering-ic.jpg" alt="HLW8112 package marking" width="700"></a>
 
 *HLW8112 package marking and the surrounding analog network.*
 
