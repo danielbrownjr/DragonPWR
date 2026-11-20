@@ -43,6 +43,9 @@ jobs:
       - name: Check dc_ui dependency pin and lock
         run: python3 tests/check_dc_ui_pin.py
 
+      - name: Check unsupported events route contract
+        run: python3 tests/check_events_route.py
+
       - name: Check DragonPWR recovery UI behavior
         run: node tests/check_power_recovery.mjs
 
