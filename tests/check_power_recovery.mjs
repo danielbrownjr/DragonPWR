@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
 const html=readFileSync(new URL('../components/dp_portal/power.html',import.meta.url),'utf8');
-const js=[...html.matchAll(/<script(?:[^>]*)>([\\s\\S]*?)<\\/script>/g)].at(-1)?.[1];
+const js=[...html.matchAll(/<script(?:[^>]*)>([\s\S]*?)<\/script>/g)].at(-1)?.[1];
 assert.ok(js,'embedded controller exists');
 new Function(js);
 
@@ -38,7 +38,8 @@ function harness({v2=false,noSlot=false}={}){
     }
     throw Error('unexpected endpoint '+path);
   };
-  const localStorage={getItem:()=>null,setItem(){},removeItem(){}};
+  const stored=new Map();
+  const localStorage={getItem:key=>stored.get(key)||null,setItem(key,value){stored.set(key,value)},removeItem(key){stored.delete(key)}};
   new Function('document','localStorage','fetch','setTimeout','prompt','confirm',js)(
     doc,localStorage,fetch,fn=>timers.push(fn),()=>promptHandler(),()=>confirmHandler());
   const node=id=>nodes.get(id);
@@ -112,7 +113,7 @@ async function testDialogsAndConcurrency(){
   retry.onPrompt(()=> 'new-token');
   retry.click('restart-button');await retry.settle();
   assert.equal(retry.posts.length,2,'token 403 prompts a single retry');
-  assert.equal(retry.posts[1].opts.headers['X-Dragon-Auth'],'web','token value comes from storage');
+  assert.equal(retry.posts[1].opts.headers['X-Dragon-Auth'],'new-token','prompt token used for retry');
   assert.ok(retry.counts.state>=3,'retry revalidates live state');
 
   const changeOnPrompt=harness();await changeOnPrompt.settle();
