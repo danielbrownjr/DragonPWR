@@ -248,6 +248,20 @@ The three features that justify the product.
 - [ ] Future shared presentation of measured power, per-print energy and policy
       editing (V1 switching and recovery remain product-owned on `/power`).
 
+## Repository contributor attribution cleanup (deferred)
+
+- [ ] Audit historical Git commit author/committer identities, `Co-Authored-By`
+      trailers, and `Claude-Session` metadata contributing to Claude's GitHub
+      contributor listing. Record affected commits and distinguish bot-authored
+      commits from ordinary assistant-assisted changes.
+- [ ] Prevent unwanted automatic Claude attribution and session links in future
+      commits while retaining truthful provenance and legitimate contributions.
+- [ ] Decide separately whether the historical contributor listing warrants a
+      repository history migration. **Do not rewrite published commits, force-push,
+      or modify tags/PR references without explicit authorization**, a tested
+      backup and rollback plan, and impact assessment. Prefer preserving existing
+      history if the display-only benefit does not justify the disruption.
+
 ## Deferred and non-goals
 
 - **Panda Touch pairing over ESP-NOW.** Reconstructible — the frame format is in
