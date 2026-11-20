@@ -139,6 +139,7 @@ async function testPendingInfoAndMismatch(){
   release({ok:true,json:async()=>({boot_id:'B',firmware:'test',device_id:'device',
     capabilities:['polling','power_switch'],inactive_slot:{label:'ota_1',project:'dragonpwr',version:'1.0'}})});
   await p;
+  await h.settle(); // the deferred info response completes after poll()'s initial microtask drain
   assert.equal(h.node('restart-button').disabled,false);
 
   const mismatch=harness();await mismatch.settle();
