@@ -289,7 +289,7 @@ def validate_other_manifests(component_root):
     for manifest in sorted(component_root.rglob("idf_component.yml")):
         for line_no, line in enumerate(manifest.read_text(encoding="utf-8").splitlines(), 1):
             code = line.split("#", 1)[0]
-            if re.search(r"(?:^|[\\s,{])(?:git|override_path)\\s*:", code, re.I):
+            if re.search(r"(?:^|[\s,{])(?:git|override_path)\s*:", code, re.I):
                 raise ValueError(f"{manifest}:{line_no}: unapproved Git/override dependency")
 
 
