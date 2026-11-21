@@ -36,15 +36,17 @@ esp_err_t dp_v2_experiment_gpio7_pulse(int level, uint32_t milliseconds)
     if (err != ESP_OK) {
         return err;
     }
+    // Diagnostics before output enable avoid extending the drive window with
+    // synchronous console I/O. This dump shows GPIO routing/preload, not OE=1.
+    gpio_dump_io_configuration(stdout, 1ULL << DP_V2_PIN_AC_COMMAND);
+    ESP_LOGW(TAG, "EXPERIMENT: about to drive GPIO7=%d for %lu ms; AC state UNKNOWN",
+             level, (unsigned long)milliseconds);
+
     err = gpio_set_direction(DP_V2_PIN_AC_COMMAND, GPIO_MODE_OUTPUT);
     if (err != ESP_OK) {
         (void)gpio_set_direction(DP_V2_PIN_AC_COMMAND, GPIO_MODE_INPUT);
         return err;
     }
-
-    ESP_LOGW(TAG, "EXPERIMENT: GPIO7 driven %d for %lu ms; physical AC state UNKNOWN",
-             level, (unsigned long)milliseconds);
-    gpio_dump_io_configuration(stdout, 1ULL << DP_V2_PIN_AC_COMMAND);
     vTaskDelay(pdMS_TO_TICKS(milliseconds) + 1);
 
     // Bounded command, even if the client drops the connection.
