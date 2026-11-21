@@ -64,6 +64,10 @@ static int dumps;
 void gpio_dump_io_configuration(void *stream, unsigned long long mask) {
     (void)stream;
     assert(mask == (1ULL << 7));
+    // All synchronous dumps must happen outside the GPIO7 drive window.
+    assert(stage != 3 && stage != 4);
+    if (dumps == 2) assert(stage == 2);
+    if (dumps == 3) assert(stage == 5);
     ++dumps;
 }
 void esp_rom_gpio_pad_select_gpio(int pin) {
@@ -82,6 +86,7 @@ int gpio_set_level(int pin, int level) {
 int gpio_set_direction(int pin, int direction) {
     assert(pin == 7);
     if (stage == 2) {
+        assert(dumps == 3);
         assert(direction == GPIO_MODE_OUTPUT);
         stage = 3;
     } else {
