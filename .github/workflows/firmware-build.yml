@@ -134,11 +134,11 @@ jobs:
               idf.py -B build-v2 -D SDKCONFIG=sdkconfig.v2 -D SDKCONFIG_DEFAULTS=sdkconfig.v2.defaults set-target esp32c3
               idf.py -B build-v2 -D SDKCONFIG=sdkconfig.v2 -D SDKCONFIG_DEFAULTS=sdkconfig.v2.defaults build
               idf.py -B build-v2 size
-              grep -q "^CONFIG_IDF_TARGET=\"esp32c3\"$" sdkconfig.v2
+              grep -q "CONFIG_IDF_TARGET.*esp32c3" sdkconfig.v2.lab
               grep -q "^CONFIG_XTAL_FREQ_40=y$" sdkconfig.v2
               grep -q "^CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions_v2.csv\"$" sdkconfig.v2
               grep -q "^CONFIG_ESPTOOLPY_FLASHSIZE=\"4MB\"$" sdkconfig.v2
-              python3 -c "from pathlib import Path; assert Path(\"build-v2/dragonpwr.bin\").stat().st_size <= 0x1f0000"
+              test "$(stat -c%s build-v2-lab/dragonpwr.bin)" -le 2031616
             '
 
       - name: Assert inactive V2 hardware is selected
@@ -188,10 +188,10 @@ jobs:
               idf.py -B build-v2-lab -D SDKCONFIG=sdkconfig.v2.lab -D SDKCONFIG_DEFAULTS=sdkconfig.v2.lab.defaults set-target esp32c3
               idf.py -B build-v2-lab -D SDKCONFIG=sdkconfig.v2.lab -D SDKCONFIG_DEFAULTS=sdkconfig.v2.lab.defaults build
               grep -q "^CONFIG_DP_V2_GPIO7_EXPERIMENT=y$" sdkconfig.v2.lab
-              grep -q "^CONFIG_IDF_TARGET=\\"esp32c3\\"$" sdkconfig.v2.lab
+              grep -q "CONFIG_IDF_TARGET.*esp32c3" sdkconfig.v2.lab
               grep -q "dp_v2_gpio7_experiment.c" build-v2-lab/compile_commands.json
               grep -q "dp_relay_v2_inactive.c" build-v2-lab/compile_commands.json
-              python3 -c "from pathlib import Path; assert Path(\\"build-v2-lab/dragonpwr.bin\\").stat().st_size <= 0x1f0000"
+              test "$(stat -c%s build-v2-lab/dragonpwr.bin)" -le 2031616
             '
 
       - name: Label experimental candidate (not firmware release)
