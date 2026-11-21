@@ -198,7 +198,7 @@ jobs:
 
       - name: Label experimental candidate (not firmware release)
         run: |
-          echo "EXPERIMENTAL / C3 GPIO7 / DO NOT DEPLOY UNATTENDED / NOT ELECTRICALLY QUALIFIED" > build-v2-lab/EXPERIMENTAL-NOT-RELEASE.txt
+          echo "EXPERIMENTAL / C3 GPIO7 / DO NOT DEPLOY UNATTENDED / NOT ELECTRICALLY QUALIFIED" > EXPERIMENTAL-NOT-RELEASE.txt
 
       - name: Upload review-only experimental image
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -206,7 +206,7 @@ jobs:
           name: dragonpwr-esp32c3-v2-gpio7-experimental
           if-no-files-found: error
           path: |
-            build-v2-lab/EXPERIMENTAL-NOT-RELEASE.txt
+            EXPERIMENTAL-NOT-RELEASE.txt
             build-v2-lab/dragonpwr.bin
             build-v2-lab/dragonpwr.elf
             build-v2-lab/bootloader/bootloader.bin
