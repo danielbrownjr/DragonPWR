@@ -1,0 +1,117 @@
+# DragonPWR V2 roadmap (provisional)
+
+This is an additive V2 planning track. The existing [V1 roadmap](ROADMAP.md)
+and V1 behavior remain unchanged. The M0–M7 gates below organize V2 work
+without implying that any milestone's physical acceptance is complete.
+Issues define future work, not authorization to implement firmware or operate hardware.
+
+> **Status reconciliation (2026-11-21):** The initial November 18 evidence
+> baseline below remains a historical report-backed snapshot. Subsequent
+> DragonPWR work has introduced a distinct ESP32-C3 V2 build configuration
+> (`sdkconfig.v2.defaults`, `partitions_v2.csv`) with **inactive** V2
+> relay/button drivers. The original factory unit was subsequently flashed with
+> DragonPWR V2 inactive-output firmware and passed **USB-only runtime acceptance**
+> (see [V2 M1 build and acceptance](V2_M1_BUILD.md), initial installed commit
+> `ec16bf5`). The shared UI startup/polling integration later merged in
+> [#37](https://github.com/danielbrownjr/DragonPWR/pull/37), with additional
+> USB-only C3 V2 browser/UART acceptance. These are real device-runtime and
+> UI observations, **not** verified AC/USB switching, metering, restored stock
+> firmware, or mains-connected V2 qualification.
+> Separate post-integration browser/hardware gaps are tracked in
+> [#38](https://github.com/danielbrownjr/DragonPWR/issues/38), with
+> [#39](https://github.com/danielbrownjr/DragonPWR/issues/39) tracking the
+> eventual upstream `dc_ui` repin. M0 evidence and physical safety gates remain
+> independently open.
+
+## Evidence gate and status
+
+**M0 evidence reconciled on 2026-11-18; milestone remains open.** The original V2 reports were located and read in the private evidence archive. Their prior ROM/device observations and image-disassembly findings are now recorded in [#14](https://github.com/danielbrownjr/DragonPWR/issues/14) and [#15](https://github.com/danielbrownjr/DragonPWR/issues/15). This reconciliation did not re-execute hardware measurements or rehash the private binary.
+
+The reported full 4 MiB factory flash capture was independently digest-verified on-device at extraction, with an untouched original and analysis copy. Bootloader and app0 image checks passed. **The original factory unit has since been reflashed with DragonPWR V2 firmware; its stock firmware is preserved in the private backup, not on the unit. A full backup is not a demonstrated restore or a proven OTA rollback.** Keep factory binaries, NVS, credentials and identifying captures outside this public repository.
+
+### V2 evidence baseline
+
+| Area | Source-supported V2 finding | Confidence / outstanding gate |
+|---|---|---|
+| Device and image | ESP32-C3 AZ rev 1.1; 40 MHz crystal; 4 MiB XMC flash; stock boot/app images specify DIO/80 MHz and were built with ESP-IDF v5.3.5 | ROM and image evidence in private engineering report; IDF version and flash-mode claims describe the stock image, not silicon properties |
+| Boot/flash | Stock bootloader `0x0`, table `0x8000`, NVS `0x9000/0x5000`, otadata `0xe000/0x2000`; app0 `0x10000/0x1f0000`, app1 `0x200000/0x1f0000`, SPIFFS `0x3f0000/0x10000` | Partition/image integrity validated in prior analysis; **otadata record VALID, selecting app0**; app1 erased. Neither the valid OTA record nor later USB-only DragonPWR boots establish stock rollback behavior |
+| AC control | GPIO7 MCU-high means desired ON; GPIO18 falling-edge interrupt triggers application of queued state. **Stock startup stores desired AC = ON, applied on the GPIO18 edge; no direct initial GPIO7-high drive observed before that edge** | Strong *static* factory-image evidence only, **not measured outlet behavior**. Physical source/timing of GPIO18, external driver polarity, pad-initialization window, pre-app reset state and energized contacts remain unknown; no live AC actuation authorized |
+| USB outlets | GPIO0 USB-A, GPIO1 USB-C (MCU active high). **Stock initialization drives both GPIO0 and GPIO1 high (desired USB on), with an initialization window before explicit levels** | Strong *static* factory-image evidence only, **not measured USB output voltage or load state**. Actual rail/switch behavior and reset transitions remain unmeasured |
+| Meter | UART1 TX2/RX3, 9600 8E1, HLW811x-compatible framing | Strong static evidence. Exact IC, per-unit coefficients, calibration/protection not verified |
+| Other pins | GPIO6 auxiliary output (stock initialization drives low); GPIO4 SPI2 LED candidate; GPIO10 meter-side input; SET among GPIO5/8/9/19 candidates | Static evidence and tentative assignments; do not inherit V1 pin assumptions, especially V1 SET-on-GPIO10 |
+| Recovery | USB-only WCH serial bridge enabled ESP32-C3 ROM read and full stock backup **before the original unit was reflashed with DragonPWR** | The unit no longer runs stock firmware; returning to stock depends on an **untested raw-backup write and verification**. Prior USB-only DragonPWR startup/readback is not stock restore or OTA rollback acceptance |
+
+**Development status:** Initial M1 C3/40 MHz build isolation, V2 partitions, inactive-output drivers and USB-only runtime acceptance are documented in [V2 M1 build and acceptance](V2_M1_BUILD.md). This does **not** close M0 physical unknowns or qualify active outputs. Further M1 acceptance and any M2 implementation that energizes AC/USB outputs or relies on GPIO18 timing require separately authorized physical characterization. #15 owns unresolved behavior gates; M7 owns recovery and powered qualification.
+
+## Milestones and scoped issues
+
+Sequence is a dependency guide, not a schedule. There are no invented due dates.
+Inactive-output M1 groundwork may proceed before M0 closes, as already demonstrated;
+M0 disposition gates physical output activation. Output and metering work use
+M1's reviewed board contract; policy uses output and printer observations;
+qualification follows implemented capabilities.
+
+| Gate | Exit criterion | Issues |
+|---|---|---|
+| [V2-M0 — Evidence baseline](https://github.com/danielbrownjr/DragonPWR/milestone/1) | V2 report/backup provenance reconciled; software mappings recorded. Remains open for disposition of physical unknowns and acceptance gates. | [#14](https://github.com/danielbrownjr/DragonPWR/issues/14), [#15](https://github.com/danielbrownjr/DragonPWR/issues/15) |
+| [V2-M1 — Board and safe boot contract](https://github.com/danielbrownjr/DragonPWR/milestone/2) | Define a separate V2 board/build profile and safe initialization from reviewed M0 evidence, preserving V1. | [#16](https://github.com/danielbrownjr/DragonPWR/issues/16), [#17](https://github.com/danielbrownjr/DragonPWR/issues/17) |
+| [V2-M2 — Outputs and local controls](https://github.com/danielbrownjr/DragonPWR/milestone/3) | Implement bounded V2 relay, USB and button behavior with centralized control and explicit restore semantics. | [#18](https://github.com/danielbrownjr/DragonPWR/issues/18) |
+| [V2-M3 — Metering](https://github.com/danielbrownjr/DragonPWR/milestone/4) | Implement and validate the V2 metering transport and conversions only after confirming its chip and interface. | [#19](https://github.com/danielbrownjr/DragonPWR/issues/19), [#20](https://github.com/danielbrownjr/DragonPWR/issues/20) |
+| [V2-M4 — Printer observation](https://github.com/danielbrownjr/DragonPWR/milestone/5) | Integrate printer observation with explicit unknown/stale/absent data semantics and resource budgets. | [#21](https://github.com/danielbrownjr/DragonPWR/issues/21) |
+| [V2-M5 — Power policy](https://github.com/danielbrownjr/DragonPWR/milestone/6) | Centralize printer-aware shutdown interlocks and cooldown policy across all control paths. | [#22](https://github.com/danielbrownjr/DragonPWR/issues/22), [#23](https://github.com/danielbrownjr/DragonPWR/issues/23) |
+| [V2-M6 — API and integrations](https://github.com/danielbrownjr/DragonPWR/milestone/7) | Expose V2 capabilities through authenticated API/UI and bounded LAN integrations. | [#24](https://github.com/danielbrownjr/DragonPWR/issues/24), [#25](https://github.com/danielbrownjr/DragonPWR/issues/25) |
+| [V2-M7 — Qualification and recovery](https://github.com/danielbrownjr/DragonPWR/milestone/8) | Collect exact-candidate build, resource, recovery and separately authorized physical qualification evidence before release consideration. | [#26](https://github.com/danielbrownjr/DragonPWR/issues/26), [#27](https://github.com/danielbrownjr/DragonPWR/issues/27) |
+
+## Existing architecture and reuse candidates
+
+- [Architecture](ARCHITECTURE.md): product hardware and power policy belong here;
+  shared networking, provisioning, logs and UI services belong in dragon-core.
+- [Board contract](../components/dp_board/include/dp_board.h),
+  [relay](../components/dp_relay/dp_relay.c),
+  [button](../components/dp_button/dp_button.c) and
+  [boot sequence](../main/app_main.c): review V1's inactive-level preload before
+  output configuration and default-off restore policy as reusable patterns.
+  GPIO readback is not measurement of outlet voltage or relay contacts.
+- [Portal](../components/dp_portal/dp_portal.c): API/auth, maintenance guards,
+  [product-owned recovery UI](../components/dp_portal/power.html) and the
+  shared DragonPWR dashboard. Printer-aware shutdown policy does not exist on
+  main and needs a product-level owner across command paths.
+- [V1 hardware evidence](HARDWARE_ANALYSIS.md), [bench notes](BENCH_NOTES.md),
+  [metering analysis](METERING_REVERSE_ENGINEERING.md) and
+  [analysis tools](../analysis/README.md): comparison/reproduction references;
+  neither V1 chip identity nor its board conversion constant establishes V2 behavior.
+- [PR #9](https://github.com/danielbrownjr/DragonPWR/pull/9) already carries
+  printer-observation work. Reconcile it before duplicating printer clients;
+  preserve its separate review and V1 acceptance boundaries.
+- [Manifest](../main/idf_component.yml), [lock](../dependencies.lock),
+  [V1 defaults](../sdkconfig.defaults) and [V1 partition table](../partitions.csv)
+  define shared dependencies and the V1 build baseline. The separately selected
+  [V2 defaults](../sdkconfig.v2.defaults) and
+  [V2 partitions](../partitions_v2.csv) now support an inactive-output
+  ESP32-C3 build; this is not physical output qualification. Keep V1 defaults
+  unchanged when extending V2.
+
+## M0 acceptance
+
+Both M0 issues now carry report-backed reconciliation. Close M0 only when remaining physical unknowns have been explicitly resolved or assigned to later qualification gates without implying hardware acceptance:
+
+- Exact product/revision and report provenance, with private recovery coverage
+  and integrity checks; never publish full-flash/NVS data.
+- V2 partition names/types/offsets/sizes and bootloader provenance, flash settings
+  and rollback behavior, distinguishing static inspection from runtime proof.
+- GPIO7/GPIO18 direction, polarity, ordering and timing with evidence references;
+  control sequence and reset behavior must not be inferred from V1.
+- USB service/power topology and switched/unswitched capabilities; metering chip,
+  bus, pins, framing and configuration side effects.
+- Explicit unknowns and implementation prerequisites. Safety-critical physical
+  checks remain distinct from source inspection and target compilation.
+
+## Verification and stopping boundaries
+
+Every implementation issue needs a separately scoped implementation task.
+Record exact source/dependency heads, target/configuration and artifact hashes.
+Keep static analysis, host tests, target compile, linked artifacts and physical
+acceptance separate. Green CI from V1 or a previous head does not qualify V2.
+The roadmap itself does not authorize flashing, erasure, output actuation,
+merging, tagging or releases. Record unresolved M0 evidence explicitly and
+require separate authorization for subsequent implementation and physical tests.
