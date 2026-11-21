@@ -63,7 +63,7 @@ def key_value(line, filename, number):
 def top_section(data, expected, filename):
     require(data and data[0][:2] == (0, "dependencies:"),
             f"{filename}: dependencies must be first root mapping")
-    root_keys = [entry[1] for entry in data if entry[0] == 0]
+    root_keys = [entry[1] for entry in data if entry[0] == 0 and not entry[1].startswith("- ")]
     require(root_keys == expected, f"{filename}: unexpected root keys")
     start = 1
     end = next((i for i, row in enumerate(data[1:], 1) if row[0] == 0),
@@ -122,11 +122,6 @@ def parse_lock(text):
     direct_i = next(i for i, (indent, entry, _) in enumerate(data)
                     if indent == 0 and entry == "direct_dependencies:")
     direct = []
-    for indent, entry, number in data[direct_i + 1:]:
-        if indent == 0:
-            break
-        require(indent == 0 or (indent == 0 and entry.startswith("- ")),
-                f"{name}:{number}: invalid direct dependency list")
     # Lock direct_dependencies is an unindented YAML sequence (not nested map).
     # The lines() helper allows these to be inspected separately.
     for indent, entry, number in data[direct_i + 1:]:
@@ -145,6 +140,13 @@ def parse_lock(text):
         source_rows = []
         mode = None
         for indent, entry, number in rows:
+            if mode == "dependencies" and indent == 4 and entry.startswith("- name: "):
+                # Nested lock dependency, not a component-level mapping.
+                continue
+            if mode == "dependencies" and indent == 6:
+                require(bool(re.fullmatch(r"(?:require|version): .+", entry)),
+                        f"{name}:{number}: unexpected dependency child")
+                continue
             if indent == 4:
                 key, value = key_value(entry, name, number)
                 require(key not in direct_fields, f"{name}: {component}: duplicate {key}")
@@ -152,12 +154,6 @@ def parse_lock(text):
                 mode = key
             elif indent == 6 and mode == "source":
                 source_rows.append((indent, entry, number))
-            elif mode == "dependencies" and (indent == 4 or indent == 6):
-                # IDF's nested list has '- name:' at indent 4 and attributes at 6.
-                # Never interpret these fields as component source metadata.
-                require(entry.startswith("- name: ") if indent == 4 else
-                        bool(re.fullmatch(r"(?:require|version): .+", entry)),
-                        f"{name}:{number}: unexpected dependency child")
             else:
                 raise ValueError(f"{name}:{number}: unexpected lock nesting")
         require(set(direct_fields) == {"component_hash", "dependencies",
