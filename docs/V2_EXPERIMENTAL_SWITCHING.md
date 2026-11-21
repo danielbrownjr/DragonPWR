@@ -1,48 +1,33 @@
-# V2 experimental switching candidate: scope and go/no-go gates
+# DragonPWR V2 experimental GPIO7 pulse firmware
 
-**Status:** pre-implementation specification for [#18](https://github.com/danielbrownjr/DragonPWR/issues/18). Dan approved pursuing an **experimental candidate** on 2026-11-21. This is **not** a released or flashable switching image, does not authorize mains operation, and does not waive hardware qualification. The existing ESP32-C3 inactive-output build remains the default.
+**Status:** draft, source-review-only candidate for [issue #18](https://github.com/danielbrownjr/DragonPWR/issues/18). This combines the previously separated Stage A/B into one **opt-in, reviewable, GPIO7-driving laboratory firmware candidate**, as requested by Dan on 2026-11-21. It is not an electrical qualification, production release, or evidence of a successful flash or energized test.
 
-## Objective
+## Why GPIO7?
 
-Develop a deliberately opt-in ESP32-C3 laboratory candidate capable of **explicitly commanding AC OFF/ON and observing actual outlet behavior** in a separately approved, enclosed, unloaded or appropriately rated external test fixture. No board disassembly. Avoid accidental activation via existing REST/legacy routes or automated restore while fundamental electrical behavior remains unknown.
+Static analysis of the original V2 firmware indicates GPIO7 HIGH commands AC ON at the MCU, but stock applies the queued level from a GPIO18 falling-edge handler. GPIO18 also overlaps the C3 USB Serial/JTAG D− pad. Neither the origin/purpose of that edge nor external relay topology is verified.
 
-## Evidence and contradiction to resolve
+Dan reported approximately **240 V AC at the receptacle on initial application of mains with stock firmware**. That external DVM observation supersedes an earlier mistaken DC-range reading, but does not establish whether GPIO7 directly controls the contacts or the timing of boot-time switching. This firmware **deliberately tests an arbitrary GPIO7 level write without claiming equivalence to stock firmware's edge-based scheme**.
 
-- The **factory firmware static analysis** indicates AC GPIO7 high = commanded ON at MCU level; the desired state initializes ON but the GPIO18 falling-edge handler applies the pending GPIO7 state. It drives USB-A/C GPIO0/1 high at stock initialization.
-- Dan subsequently reported **about 240 V AC measured at the outlet when mains was connected** with stock firmware. This is an external observation, not proof of contact closure, timing, load capability, or the mechanism of energization; the firmware has since been replaced on the original unit.
-- ESP-IDF v5.3.5 assigns ESP32-C3 GPIO18/19 to USB Serial/JTAG D−/D+; the secondary console defaults to that peripheral unless the generated configuration differs. The inactive C3 product drivers don't touch these pads, but the platform might.
-- The currently merged C3 build rejects `dp_relay_set()` and restore writes, returns placeholder OFF, hides output-control capability, and uses `dp_button_v2_inactive.c`.
-- The full private factory flash backup is verified as a **source image**, but a completed **stock restore and rollback have never been demonstrated**. NVS initialization can erase credentials for specific errors.
+## The single experimental candidate
 
-See [safe-boot and recovery contract](V2_SAFE_BOOT_RECOVERY.md) and [V2 board profile](V2_M1_BUILD.md). Do not publish raw firmware, private NVS or device identifiers.
+- **Target:** ESP32-C3 V2 only. The normal `sdkconfig.v2.defaults` keeps output drivers inactive. A distinct `sdkconfig.v2.lab.defaults` opts into `CONFIG_DP_V2_GPIO7_EXPERIMENT=y`. V1 remains on its original driver. CI builds and uploads a separately named **experimental** C3 artifact.
+- **Startup:** no GPIO7 writes, GPIO18/19 configuration, USB enable writes or local button configuration from the experimental module at boot. The regular C3 relay driver remains inactive.
+- **Command entry point:** `POST /api/v2/experimental/gpio7`, present **only** in the opt-in build. Requires an actually configured DragonPWR `X-Dragon-Auth` token (presence-only auth is explicitly rejected), a separate `X-Dragon-Lab-Confirm: GPIO7-HUMAN-MONITORED` header, and JSON `{"level":1,"duration_ms":250}` or level 0. Accepts only 0/1 and integer 100–2000 ms; no toggle, continuous/latched-on state or automatic restore.
+- **Execution:** preload the requested output register level, switch GPIO7 to output for the interval, then switch back to input. Return physical AC state as **null/unknown** regardless of success. A CPU reset during the pulse can terminate the command unpredictably; releasing to high impedance does **not** prove the outlet is off.
+- **Other routes:** Existing `POST /api/v2/command`, legacy `POST /set`, provisioning restore, physical SET, and the shared GUI stay **inactive** for V2; USB-A/C control is not implemented. No experimental capability is advertised in `/api/v2/info`.
+- **Environment:** HTTP on a trusted isolated bench network only. This route is not cryptographically secure against traffic sniffing/MITM; the second header is a deliberate-acknowledgment check, not a second secret. Power must not be connected to an unattended printer.
+- **Observable output:** One HTTP response after the bounded interval, showing the level written and duration, with no claimed relay/contact/voltage readback. DVM readings and timing must be recorded separately.
 
-## Two-stage implementation, not one unguarded build
+## Review, build and measurement workflow
 
-### Stage A: reviewable software-only prototype
+1. Review GPIO driver, generated C3 config, route token enforcement, portal bypasses, all fail/restart paths, default/experimental linker separation, preservation of ROM recovery and C2 functionality. Have an independent reviewer verify the **exact PR head** and native IDF 5.3.5 C2/C3/lab build artifacts.
+2. Run the host mock test `python3 scripts/test_v2_gpio7_experiment.py`, CI default C3 inactive build, C2 build, and CI lab build. These prove only code behavior and build wiring, not electrical behavior.
+3. Before flashing, confirm the preexisting private factory 4 MiB image, current device state, any NVS preservation, exact flash/partition options and a specific recovery procedure. A stock reflash has **not** been successfully exercised. Verify binary digest and experimental config before using it.
+4. The **separate, explicitly reviewed human-monitored test** uses the sealed device and external mains-rated DVM/test fixture. Record idle AC voltage, the precise pulse time and level, outlet response and recovery after the pulse. A DVM may miss subsecond events; a voltage reading is not evidence of safe contact or protection behavior.
+5. Stop on unexpected switch state, reset, GPIO ownership conflict, loss of network/ROM access, inability to recover, or a fixture problem. There is no assumption that input mode equals relay OFF.
 
-- Keep **C3 production/default selection on the inactive driver**. Prototype code must not be selected by default, shipped as a public release binary, or reachable through a mistaken C2 configuration.
-- Introduce an explicit experimental build-selection gate with a clearly distinguishable binary/version marker. A C3 experimental build must be impossible to mistake for the normal inactive build. Reject ambiguous combinations at configure/build time.
-- Exercise a deterministic, host-testable control state machine with **inhibited initialization**, explicit operator command arbitration, no autonomous ON or persisted LAST/ON restoration, rejection of invalid outputs and failures, and maintenance/restart protection.
-- Treat output state as `unknown` without independent verification. Do **not** make existing `dp_relay_get() == false` a physical OFF proof. Keep C3 UI/API output controls disabled until their experimental routes and maintenance guards have been separately reviewed.
-- Test the C2 target and C3 inactive target against current behavior; add negative tests proving nonexperimental C3 artifacts include no experimental actuators. Do not weaken current CI inactive-driver checks to make prototype builds pass.
-- This stage does **not** drive GPIO7, GPIO18, GPIO0, GPIO1, GPIO6, GPIO19 or other unqualified nets and does not produce a hardware-test authorization.
+**Not done in this PR:** hardware flash, test on mains, publication of firmware release/tag, stock restore, physical GPIO/relay polarity qualification, or certification. No activity on the user's device has occurred.
 
-### Stage B: opt-in actuation candidate, **blocked pending electrical/source gate**
+## Important caveat: experimental by design
 
-Before any build capable of energizing a mains path or being flashed for switching:
-
-1. Determine a defensible GPIO18 handling strategy from manufacturer information or equivalently strong evidence. In particular, do not assume GPIO18 is zero-cross, and do not let a stock-edge hypothesis silently turn into a timer-driven GPIO7 write.
-2. Verify generated C3 `sdkconfig`, USB Serial/JTAG ownership of GPIO18/19, strapping risks, and console recovery path. Any peripheral reassignment must be explicit and reviewed.
-3. Define the commanded OFF electrical level separately from **observed** outlet OFF, and characterize default reset/power-loss behavior using approved non-invasive evidence; do not blindly reuse V1 GPIO7 active-low preload.
-4. Decide exactly which output(s) are in scope. Start with AC only; keep USB-A/C and SET disabled until separately qualified. Specify operator-only control, bounded command duration/sequence, a fail-closed policy, and how to abort without relying on a browser.
-5. Ensure an authorized recovery plan for the exact C3 image, including known ROM access, verified source backup, credentials/NVS preservation as needed, expected partition map and postflash readback. A *hypothetical* stock restore is not a verified fallback.
-6. Review all entry points: `POST /api/v2/command`, `POST /set`, provisioning restore, local inputs, UI capability flags, OTA/reboot and boot inactive-slot endpoints. Prevent any path from bypassing experimental command authorization or operating on an unknown physical state.
-7. Produce exact-head ESP-IDF 5.3.5 C2/C3 builds and test reports; obtain independent source and electrical-safety reviews **before** asking for a particular flash/energized test procedure.
-8. Carry out only separately authorized, externally enclosed, mains-rated test procedures with a recorded firmware digest, protective setup, no printer/load initially, abort criteria and measurements. A DMM voltage observation alone does not establish contact closure or switching transient safety.
-
-## Explicit acceptance and stop
-
-- **Stage A success:** dedicated software-only prototype reviewed, host tests covering state transitions and legacy-route refusal, unchanged default C2/C3 binaries, exact-head native build evidence, and no linkable actuation in default images.
-- **Stage B success:** reviewed opt-in driver and guarded control interface, an approved specific external test plan, then actual recorded measurements of commanded ON/OFF, cold startup, restart, and power fault at the output. *Only observed tests count.*
-- **Stop immediately** if GPIO18 purpose/ownership, relay polarity or safe default remains ambiguous; an unexpected outlet voltage/state appears; source and generated config disagree; a recovery image cannot be verified; or the test fixture/authorization is inadequate.
-- A passed host test is not a mains safety claim. No tags, deployment, flash, powered tests or merge are granted by this document.
+The pulse mechanism intentionally does **not** replicate stock GPIO18 edge timing. GPIO7 LOW may also be electrically meaningful, despite static evidence that HIGH is the stock commanded-ON level. A DVM-based external test can answer whether the receptacle responds, but not identify isolation topology, zero-cross behavior or submillisecond relay transients. The experiment must not be generalized to production switching without further evidence.
