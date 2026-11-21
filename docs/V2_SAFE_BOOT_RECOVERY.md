@@ -12,6 +12,8 @@ This document defines **what must be established** before enabling V2 output dri
 
 **Evidence levels:** `S` = static source/image inference, `B` = native compile/link/host verification, `U` = operator-reported USB-only physical runtime, `P` = instrumented physical pad/rail/contact measurement, `E` = separately approved energized-output qualification, `R` = executed destructive restore/OTA rollback exercise. No level substitutes for a later level. Cite device variant, exact firmware SHA and artifact, board revision, instrument setup, stimulus, timestamps, outcomes and unresolved unknowns in each future test record.
 
+> **Experimental exception (issue #18):** The opt-in, C3-only GPIO7 laboratory build in [V2_EXPERIMENTAL_SWITCHING.md](V2_EXPERIMENTAL_SWITCHING.md) deliberately commands GPIO7 only during explicitly acknowledged, bounded human-monitored tests. Its behavior is **not** qualified under the default inactive-output contract or safe for unattended use. This exception does not alter V1 or normal C3 builds and is not electrical qualification.
+
 ## Known V2 behavior and unresolved hazards
 
 | Item | Source-supported observation | Not established / acceptance consequence |
