@@ -17,14 +17,26 @@ with valid 64-digit component hashes. Fork manifests **must** use an exact
 40-digit Git SHA matching the lock; floating branches and tags are prohibited.
 Upstream `dc_ui` is also exact-SHA pinned. The existing upstream
 `v0.30.0` manifest pins for `dc_evlog`, `dc_wifi` and `dc_portal`
-are grandfathered with their exact locked revisions; do not introduce new
-moving upstream tags without a separately reviewed policy change.
+are grandfathered **only** when their locked revision is
+`8d5a61de8544a5b82cc3c6d9c7dc593ce06bb8bd`; any lock-only SHA
+change is rejected. Do not introduce new moving upstream tags without a
+separately reviewed policy change.
+
+The validator accepts only the repository's canonical block-style dependency
+YAML subset, not arbitrary YAML constructs. It rejects inline/flow mappings,
+anchors, unknown dependency names and keys, duplicate keys, and unexpected
+nested source records. This is deliberate: a superficially approved nested
+`git` field must never hide the actual Git source used by ESP-IDF. Adding
+another component, source type, or YAML construct requires an explicit policy
+and test update. The sole existing non-`dragon-core` download is the pinned
+Espressif mDNS registry component; the lock's IDF built-in source is checked
+separately.
 
 For each fork component, commit a matching record in
 `config/dragon_core_fork_pins.json` containing its exact revision,
 the exact upstream base revision and a tracking issue or PR in an approved
 dragon-core repository. Records for components pinned upstream are forbidden.
-The check rejects mismatched sources, paths, metadata or revisions before build.
+The check rejects mismatched sources, paths, metadata or revisions before build.\nThe component hash is format-validated here and independently checked against\nthe downloaded component contents by ESP-IDF during the actual build.\nNeither this static check nor a hash supplied in the same lockfile proves that\na specific Git commit was reviewed or approved.
 This provenance is *traceability*, not evidence of review or acceptance.
 
 ## Development and promotion
