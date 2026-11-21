@@ -63,7 +63,7 @@ def key_value(line, filename, number):
 def top_section(data, expected, filename):
     require(data and data[0][:2] == (0, "dependencies:"),
             f"{filename}: dependencies must be first root mapping")
-    root_keys = [entry[1] for entry in data if entry[0] == 0 and not entry[1].startswith("- ")]
+    root_keys = [entry[1].split(":", 1)[0] + ":" for entry in data if entry[0] == 0 and not entry[1].startswith("- ")]
     require(root_keys == expected, f"{filename}: unexpected root keys")
     start = 1
     end = next((i for i, row in enumerate(data[1:], 1) if row[0] == 0),
@@ -133,6 +133,47 @@ def parse_lock(text):
             raise ValueError(f"{name}:{number}: invalid direct dependency")
     require(set(direct) == MANIFEST_DEPS and len(direct) == len(MANIFEST_DEPS),
             f"{name}: unexpected direct dependencies")
+    # The only other downloads in the existing lock are a pinned Espressif
+    # registry component and the IDF builtin. Do not allow an unreviewed Git
+    # source to hide under one of those approved dependency names.
+    for name_key, expected_source, expected_version in (
+        ("espressif/mdns", {"registry_url": "https://components.espressif.com/",
+                           "type": "service"}, "1.12.0"),
+        ("idf", {"type": "idf"}, "5.3.5"),
+    ):
+        rows = sections[name_key][1]
+        section_fields = {}
+        source_rows = []
+        active = None
+        for indent, entry, number in rows:
+            if active == "dependencies" and indent == 4 and entry.startswith("- name: "):
+                continue
+            if active == "dependencies" and indent == 6:
+                require(bool(re.fullmatch(r"(?:require|version): .+", entry)),
+                        f"{name}:{number}: unexpected dependency child")
+                continue
+            if indent == 4:
+                key, value = key_value(entry, name, number)
+                require(key not in section_fields,
+                        f"{name}: {name_key}: duplicate {key}")
+                section_fields[key] = value
+                active = key
+            elif indent == 6 and active == "source":
+                source_rows.append((indent, entry, number))
+            else:
+                raise ValueError(f"{name}:{number}: unexpected {name_key} nesting")
+        expected = ({"component_hash", "dependencies", "source", "version"}
+                    if name_key == "espressif/mdns" else {"source", "version"})
+        require(set(section_fields) == expected and
+                section_fields["source"] == "" and
+                section_fields["version"] == expected_version,
+                f"{name}: {name_key}: unexpected lock metadata")
+        if name_key == "espressif/mdns":
+            require(bool(HASH.fullmatch(section_fields["component_hash"])) and
+                    section_fields["dependencies"] == "",
+                    f"{name}: invalid registry component hash/dependencies")
+        require(fields(source_rows, 6, name, name_key + ".source") == expected_source,
+                f"{name}: {name_key}: unexpected repository or source")
     result = {}
     for component in COMPONENTS:
         rows = sections[component][1]
