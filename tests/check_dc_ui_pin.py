@@ -279,6 +279,20 @@ def validate(manifest_text, lock_text, provenance_text):
             for name in COMPONENTS}
 
 
+
+def validate_other_manifests(component_root):
+    """Other product components may use registry dependencies, not new Git remotes.
+
+    This prevents adding a floating/unapproved Git dependency in a separate
+    component manifest without updating the allowlist and policy tests.
+    """
+    for manifest in sorted(component_root.rglob("idf_component.yml")):
+        for line_no, line in enumerate(manifest.read_text(encoding="utf-8").splitlines(), 1):
+            code = line.split("#", 1)[0]
+            if re.search(r"(?:^|[\\s,{])(?:git|override_path)\\s*:", code, re.I):
+                raise ValueError(f"{manifest}:{line_no}: unapproved Git/override dependency")
+
+
 def main():
     try:
         sources = validate(
@@ -286,6 +300,7 @@ def main():
             Path(FILES[1]).read_text(encoding="utf-8"),
             Path("config/dragon_core_fork_pins.json").read_text(encoding="utf-8"),
         )
+        validate_other_manifests(Path("components"))
     except (OSError, ValueError) as exc:
         raise SystemExit(f"FAIL: dragon-core dependency policy: {exc}") from exc
     print("PASS: dragon-core dependency sources, pins, hashes and provenance "
