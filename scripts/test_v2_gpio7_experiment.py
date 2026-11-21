@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile and run the actual opt-in GPIO7 pulse driver against host GPIO mocks."""
+"""Host-compile real GPIO7 experiment against pure GPIO/task mocks."""
 from pathlib import Path
 import subprocess
 import tempfile
@@ -10,46 +10,48 @@ PORTAL = (ROOT / "components/dp_portal/dp_portal.c").read_text()
 CMAKE = (ROOT / "components/dp_relay/CMakeLists.txt").read_text()
 DEFAULTS = (ROOT / "sdkconfig.v2.defaults").read_text()
 LAB = (ROOT / "sdkconfig.v2.lab.defaults").read_text()
+
 assert "CONFIG_DP_V2_GPIO7_EXPERIMENT=y" not in DEFAULTS
 assert "CONFIG_DP_V2_GPIO7_EXPERIMENT=y" in LAB
 assert "if(CONFIG_DP_V2_GPIO7_EXPERIMENT)" in CMAKE
 assert '"/api/v2/experimental/gpio7"' in PORTAL
 assert 'stored[0] == 0' in PORTAL
 assert '"X-Dragon-Lab-Confirm"' in PORTAL
-assert "dp_relay_set(target, want)" in PORTAL  # legacy path still uses inactive C3
 assert "dp_v2_experiment_gpio7_pulse(level, duration)" in PORTAL
+assert "dp_relay_set(target, want)" in PORTAL
 
-with tempfile.TemporaryDirectory(prefix="dragonpwr-gpio7-lab-") as directory:
+with tempfile.TemporaryDirectory(prefix="dragonpwr-gpio7-test-") as directory:
     tmp = Path(directory)
-    for directory_name in ("driver", "freertos"):
-        (tmp / directory_name).mkdir()
-    (tmp / "sdkconfig.h").write_text(
-        ("#define CONFIG_IDF_TARGET_ESP32C3 1\\n"
-         "#define CONFIG_DP_V2_GPIO7_EXPERIMENT 1\\n").replace("\\\\n", "\\n")
-    )
-    (tmp / "esp_err.h").write_text(
-        "typedef int esp_err_t;\\n#define ESP_OK 0\\n#define ESP_ERR_INVALID_ARG 0x102\\n"
-        .replace("\\\\n", "\\n")
-    )
-    (tmp / "dp_board.h").write_text("#define DP_V2_PIN_AC_COMMAND 7\\n".replace("\\\\n", "\\n"))
-    (tmp / "driver/gpio.h").write_text(
-        ("#define GPIO_MODE_INPUT 1\\n#define GPIO_MODE_OUTPUT 2\\n"
-         "int gpio_set_level(int pin, int level);\\nint gpio_set_direction(int pin, int direction);\\n")
-        .replace("\\\\n", "\\n")
-    )
-    (tmp / "esp_log.h").write_text(
-        ('#define ESP_LOGW(tag, ...) ((void)(tag))\\n#define ESP_LOGE(tag, ...) ((void)(tag))\\n'
-         '#define esp_err_to_name(err) "err"\\n').replace("\\\\n", "\\n")
-    )
-    (tmp / "freertos/FreeRTOS.h").write_text(
-        "#define pdMS_TO_TICKS(ms) (ms)\\n".replace("\\\\n", "\\n")
-    )
-    (tmp / "freertos/task.h").write_text(
-        "void vTaskDelay(unsigned int ticks);\\n".replace("\\\\n", "\\n")
-    )
-    (tmp / "test.c").write_text(r'''
+    for sub in ("driver", "freertos"):
+        (tmp / sub).mkdir()
+
+    (tmp / "sdkconfig.h").write_text("""#define CONFIG_IDF_TARGET_ESP32C3 1
+#define CONFIG_DP_V2_GPIO7_EXPERIMENT 1
+""")
+    (tmp / "esp_err.h").write_text("""#pragma once
+typedef int esp_err_t;
+#define ESP_OK 0
+#define ESP_ERR_INVALID_ARG 0x102
+""")
+    (tmp / "dp_board.h").write_text("""#define DP_V2_PIN_AC_COMMAND 7
+""")
+    (tmp / "driver/gpio.h").write_text("""#define GPIO_MODE_INPUT 1
+#define GPIO_MODE_OUTPUT 2
+int gpio_set_level(int pin, int level);
+int gpio_set_direction(int pin, int direction);
+""")
+    (tmp / "esp_log.h").write_text("""#define ESP_LOGW(tag, ...) ((void)(tag))
+#define ESP_LOGE(tag, ...) ((void)(tag))
+#define esp_err_to_name(err) "err"
+""")
+    (tmp / "freertos/FreeRTOS.h").write_text("""#define pdMS_TO_TICKS(ms) (ms)
+""")
+    (tmp / "freertos/task.h").write_text("""void vTaskDelay(unsigned int ticks);
+""")
+    (tmp / "test.c").write_text("""
 #include <assert.h>
 #include <stdint.h>
+#include "sdkconfig.h"
 #include "dp_v2_experiment.h"
 static int stage;
 static int last_level = -1;
@@ -62,8 +64,13 @@ int gpio_set_level(int pin, int level) {
 }
 int gpio_set_direction(int pin, int direction) {
     assert(pin == 7);
-    if (stage == 1) { assert(direction == 2); stage = 2; }
-    else { assert(stage == 3 && direction == 1); stage = 4; }
+    if (stage == 1) {
+        assert(direction == GPIO_MODE_OUTPUT);
+        stage = 2;
+    } else {
+        assert(stage == 3 && direction == GPIO_MODE_INPUT);
+        stage = 4;
+    }
     return 0;
 }
 void vTaskDelay(unsigned int ticks) {
@@ -82,9 +89,8 @@ int main(void) {
     stage = 0;
     assert(dp_v2_experiment_gpio7_pulse(0, 100) == 0);
     assert(stage == 4 && last_level == 0);
-    return 0;
 }
-''')
+""")
     cmd = [
         "cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
         "-I", str(tmp), "-I", str(ROOT / "components/dp_relay/include"),
@@ -92,4 +98,5 @@ int main(void) {
     ]
     subprocess.run(cmd, check=True)
     subprocess.run([str(tmp / "test")], check=True)
-print("PASS: explicit opt-in, bounded GPIO7 pulse, release, and inactive V2 defaults")
+
+print("PASS: opt-in GPIO7 HIGH/LOW pulse and finite input release; default inactive")
