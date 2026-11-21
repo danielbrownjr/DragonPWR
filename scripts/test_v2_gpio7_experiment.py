@@ -33,13 +33,13 @@ with tempfile.TemporaryDirectory(prefix="dragonpwr-gpio7-lab-") as directory:
     )
     (tmp / "dp_board.h").write_text("#define DP_V2_PIN_AC_COMMAND 7\\n".replace("\\\\n", "\\n"))
     (tmp / "driver/gpio.h").write_text(
-        "#define GPIO_MODE_INPUT 1\\n#define GPIO_MODE_OUTPUT 2\\n"
-        "int gpio_set_level(int pin, int level);\\nint gpio_set_direction(int pin, int direction);\\n"
+        ("#define GPIO_MODE_INPUT 1\\n#define GPIO_MODE_OUTPUT 2\\n"
+         "int gpio_set_level(int pin, int level);\\nint gpio_set_direction(int pin, int direction);\\n")
         .replace("\\\\n", "\\n")
     )
     (tmp / "esp_log.h").write_text(
-        '#define ESP_LOGW(tag, ...) ((void)(tag))\\n#define ESP_LOGE(tag, ...) ((void)(tag))\\n'
-        '#define esp_err_to_name(err) "err"\\n'.replace("\\\\n", "\\n")
+        ('#define ESP_LOGW(tag, ...) ((void)(tag))\\n#define ESP_LOGE(tag, ...) ((void)(tag))\\n'
+         '#define esp_err_to_name(err) "err"\\n').replace("\\\\n", "\\n")
     )
     (tmp / "freertos/FreeRTOS.h").write_text(
         "#define pdMS_TO_TICKS(ms) (ms)\\n".replace("\\\\n", "\\n")
