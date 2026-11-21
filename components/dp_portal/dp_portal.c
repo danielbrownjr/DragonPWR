@@ -12,9 +12,6 @@
 #include "dc_portal.h"
 #include "dc_wifi.h"
 #include "dp_relay.h"
-#if defined(CONFIG_IDF_TARGET_ESP32C3) && defined(CONFIG_DP_V2_GPIO7_EXPERIMENT)
-#include "dp_v2_experiment.h"
-#endif
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -27,6 +24,9 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "sdkconfig.h"
+#if defined(CONFIG_IDF_TARGET_ESP32C3) && defined(CONFIG_DP_V2_GPIO7_EXPERIMENT)
+#include "dp_v2_experiment.h"
+#endif
 
 static const char *TAG = "dp_portal";
 
