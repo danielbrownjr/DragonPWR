@@ -26,6 +26,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Validate approved dragon-core sources and fork provenance
+        run: |
+          python3 tests/check_dc_ui_pin.py
+          python3 -m unittest discover -s tests -p 'test_dragon_core_source_policy.py' -v
+
       - name: Validate release request and prepare local tag
         id: version
         shell: bash
@@ -66,6 +71,9 @@ jobs:
               idf.py size
               idf.py merge-bin
             '
+
+      - name: Verify C2 dependency lock unchanged
+        run: git diff --exit-code -- dependencies.lock
 
       - name: Package and verify artifacts
         shell: bash
