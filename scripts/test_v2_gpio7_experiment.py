@@ -37,8 +37,13 @@ typedef int esp_err_t;
 """)
     (tmp / "driver/gpio.h").write_text("""#define GPIO_MODE_INPUT 1
 #define GPIO_MODE_OUTPUT 2
+void gpio_dump_io_configuration(void *stream, unsigned long long mask);
 int gpio_set_level(int pin, int level);
 int gpio_set_direction(int pin, int direction);
+""")
+    (tmp / "esp_rom_gpio.h").write_text("""void esp_rom_gpio_pad_select_gpio(int pin);
+""")
+    (tmp / "esp_system.h").write_text("""void esp_restart(void);
 """)
     (tmp / "esp_log.h").write_text("""#define ESP_LOGW(tag, ...) ((void)(tag))
 #define ESP_LOGE(tag, ...) ((void)(tag))
@@ -55,29 +60,40 @@ int gpio_set_direction(int pin, int direction);
 #include "driver/gpio.h"
 #include "dp_v2_experiment.h"
 static int stage;
+static int dumps;
+void gpio_dump_io_configuration(void *stream, unsigned long long mask) {
+    (void)stream;
+    assert(mask == (1ULL << 7));
+    ++dumps;
+}
+void esp_rom_gpio_pad_select_gpio(int pin) {
+    assert(pin == 7 && stage == 0 && dumps == 1);
+    stage = 1;
+}
+void esp_restart(void) { assert(0 && "unexpected restart"); }
 static int last_level = -1;
 static unsigned int delay_ticks;
 int gpio_set_level(int pin, int level) {
-    assert(pin == 7 && stage == 0);
+    assert(pin == 7 && stage == 1 && dumps == 2);
     last_level = level;
-    stage = 1;
+    stage = 2;
     return 0;
 }
 int gpio_set_direction(int pin, int direction) {
     assert(pin == 7);
-    if (stage == 1) {
+    if (stage == 2) {
         assert(direction == GPIO_MODE_OUTPUT);
-        stage = 2;
+        stage = 3;
     } else {
-        assert(stage == 3 && direction == GPIO_MODE_INPUT);
-        stage = 4;
+        assert(stage == 4 && direction == GPIO_MODE_INPUT);
+        stage = 5;
     }
     return 0;
 }
 void vTaskDelay(unsigned int ticks) {
-    assert(stage == 2);
+    assert(stage == 3 && dumps == 3);
     delay_ticks = ticks;
-    stage = 3;
+    stage = 4;
 }
 int main(void) {
     assert(dp_v2_experiment_gpio7_pulse(-1, 100) != 0);
@@ -86,10 +102,11 @@ int main(void) {
     assert(dp_v2_experiment_gpio7_pulse(1, 2001) != 0);
     assert(stage == 0);
     assert(dp_v2_experiment_gpio7_pulse(1, 250) == 0);
-    assert(stage == 4 && last_level == 1 && delay_ticks >= 250);
+    assert(stage == 5 && last_level == 1 && delay_ticks >= 250 && dumps == 4);
     stage = 0;
+    dumps = 0;
     assert(dp_v2_experiment_gpio7_pulse(0, 100) == 0);
-    assert(stage == 4 && last_level == 0);
+    assert(stage == 5 && last_level == 0 && dumps == 4);
 }
 """)
     cmd = [
