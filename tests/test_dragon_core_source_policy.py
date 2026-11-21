@@ -172,10 +172,12 @@ class DependencyPolicyTests(unittest.TestCase):
             verify(m)
 
     def test_unknown_lock_dependency_rejected(self):
+        # Syntactically ordinary block YAML: rejection must be based on the
+        # unexpected dependency name, not merely unsupported flow syntax.
         l = LOCK.replace(
             "  dc_ui:\n",
-            "  evil_dependency:\n    source: {git: https://github.com/attacker/repo}\n  dc_ui:\n", 1)
-        with self.assertRaisesRegex(ValueError, "unsupported YAML syntax"):
+            "  evil_dependency:\n    version: 1.0.0\n  dc_ui:\n", 1)
+        with self.assertRaisesRegex(ValueError, "unexpected/missing dependency"):
             verify(lock=l)
 
     def test_lock_source_path_rejected(self):
