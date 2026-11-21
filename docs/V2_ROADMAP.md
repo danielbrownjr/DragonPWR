@@ -1,18 +1,22 @@
 # DragonPWR V2 roadmap (provisional)
 
 This is an additive V2 planning track. The existing [V1 roadmap](ROADMAP.md)
-and V1 behavior remain unchanged. The M0–M7 breakdown below is proposed here;
-an earlier proposed breakdown was not available during setup on 2026-11-18.
+and V1 behavior remain unchanged. The M0–M7 gates below organize V2 work
+without implying that any milestone's physical acceptance is complete.
 Issues define future work, not authorization to implement firmware or operate hardware.
 
 > **Status reconciliation (2026-11-21):** The initial November 18 evidence
 > baseline below remains a historical report-backed snapshot. Subsequent
 > DragonPWR work has introduced a distinct ESP32-C3 V2 build configuration
 > (`sdkconfig.v2.defaults`, `partitions_v2.csv`) with **inactive** V2
-> relay/button drivers, and merged the shared UI startup/polling integration
-> ([#37](https://github.com/danielbrownjr/DragonPWR/pull/37)).
-> These establish target-build/UI integration evidence, **not** verified AC/USB
-> output switching, metering, full restore, or powered V2 qualification.
+> relay/button drivers. The original factory unit was subsequently flashed with
+> DragonPWR V2 inactive-output firmware and passed **USB-only runtime acceptance**
+> (see [V2 M1 build and acceptance](V2_M1_BUILD.md), initial installed commit
+> `ec16bf5`). The shared UI startup/polling integration later merged in
+> [#37](https://github.com/danielbrownjr/DragonPWR/pull/37), with additional
+> USB-only C3 V2 browser/UART acceptance. These are real device-runtime and
+> UI observations, **not** verified AC/USB switching, metering, restored stock
+> firmware, or mains-connected V2 qualification.
 > Separate post-integration browser/hardware gaps are tracked in
 > [#38](https://github.com/danielbrownjr/DragonPWR/issues/38), with
 > [#39](https://github.com/danielbrownjr/DragonPWR/issues/39) tracking the
@@ -21,29 +25,31 @@ Issues define future work, not authorization to implement firmware or operate ha
 
 ## Evidence gate and status
 
-**M0 evidence reconciled on 2026-11-18; milestone remains open.** The original V2 reports were located and read in the connected personal Techbenders Drive (DragonPWR evidence folder). Their prior ROM/device observations and image-disassembly findings are now recorded in [#14](https://github.com/danielbrownjr/DragonPWR/issues/14) and [#15](https://github.com/danielbrownjr/DragonPWR/issues/15). This reconciliation did not re-execute hardware measurements or rehash the private binary.
+**M0 evidence reconciled on 2026-11-18; milestone remains open.** The original V2 reports were located and read in the private evidence archive. Their prior ROM/device observations and image-disassembly findings are now recorded in [#14](https://github.com/danielbrownjr/DragonPWR/issues/14) and [#15](https://github.com/danielbrownjr/DragonPWR/issues/15). This reconciliation did not re-execute hardware measurements or rehash the private binary.
 
-The reported full 4 MiB factory flash capture was independently digest-verified on-device at extraction, with an untouched original and analysis copy. Bootloader and app0 image checks passed. **A full backup is not a demonstrated restore or a proven OTA rollback.** Keep factory binaries, NVS, credentials and identifying captures outside this public repository.
+The reported full 4 MiB factory flash capture was independently digest-verified on-device at extraction, with an untouched original and analysis copy. Bootloader and app0 image checks passed. **The original factory unit has since been reflashed with DragonPWR V2 firmware; its stock firmware is preserved in the private backup, not on the unit. A full backup is not a demonstrated restore or a proven OTA rollback.** Keep factory binaries, NVS, credentials and identifying captures outside this public repository.
 
 ### V2 evidence baseline
 
 | Area | Source-supported V2 finding | Confidence / outstanding gate |
 |---|---|---|
-| Silicon | ESP32-C3 AZ rev 1.1; 40 MHz crystal; 4 MiB XMC flash, DIO/80 MHz; ESP-IDF v5.3.5 | ROM and image evidence in private engineering report; separate C3 target required |
-| Boot/flash | Bootloader `0x0`, table `0x8000`, NVS `0x9000/0x5000`, otadata `0xe000/0x2000`; app0 `0x10000/0x1f0000`, app1 `0x200000/0x1f0000`, SPIFFS `0x3f0000/0x10000` | Partition/image integrity validated in prior analysis; app0 VALID, app1 erased; rollback and stock OTA not physically tested |
-| AC control | GPIO7 MCU-high means desired ON; GPIO18 falling-edge interrupt triggers application of queued state | Strong *static* evidence only. Physical source of GPIO18, external driver polarity, pre-app reset state and energized contacts unknown; no live AC actuation authorized |
-| USB outlets | GPIO0 USB-A, GPIO1 USB-C (MCU active high) | Strong static evidence. Actual rail/switch behavior and reset transitions not measured |
+| Device and image | ESP32-C3 AZ rev 1.1; 40 MHz crystal; 4 MiB XMC flash; stock boot/app images specify DIO/80 MHz and were built with ESP-IDF v5.3.5 | ROM and image evidence in private engineering report; IDF version and flash-mode claims describe the stock image, not silicon properties |
+| Boot/flash | Stock bootloader `0x0`, table `0x8000`, NVS `0x9000/0x5000`, otadata `0xe000/0x2000`; app0 `0x10000/0x1f0000`, app1 `0x200000/0x1f0000`, SPIFFS `0x3f0000/0x10000` | Partition/image integrity validated in prior analysis; **otadata record VALID, selecting app0**; app1 erased. Neither the valid OTA record nor later USB-only DragonPWR boots establish stock rollback behavior |
+| AC control | GPIO7 MCU-high means desired ON; GPIO18 falling-edge interrupt triggers application of queued state. **Stock startup stores desired AC = ON, applied on the GPIO18 edge; no direct initial GPIO7-high drive observed before that edge** | Strong *static* factory-image evidence only, **not measured outlet behavior**. Physical source/timing of GPIO18, external driver polarity, pad-initialization window, pre-app reset state and energized contacts remain unknown; no live AC actuation authorized |
+| USB outlets | GPIO0 USB-A, GPIO1 USB-C (MCU active high). **Stock initialization drives both GPIO0 and GPIO1 high (desired USB on), with an initialization window before explicit levels** | Strong *static* factory-image evidence only, **not measured USB output voltage or load state**. Actual rail/switch behavior and reset transitions remain unmeasured |
 | Meter | UART1 TX2/RX3, 9600 8E1, HLW811x-compatible framing | Strong static evidence. Exact IC, per-unit coefficients, calibration/protection not verified |
-| Other pins | GPIO6 auxiliary output; GPIO4 SPI2 LED candidate; SET among GPIO5/8/9/19 candidates | Static evidence and tentative assignments; do not inherit V1 pin assumptions |
-| Recovery | USB-only WCH serial bridge enabled ESP32-C3 ROM read and full backup | Verified read path in prior session; no restoration or OTA rollback acceptance |
+| Other pins | GPIO6 auxiliary output (stock initialization drives low); GPIO4 SPI2 LED candidate; GPIO10 meter-side input; SET among GPIO5/8/9/19 candidates | Static evidence and tentative assignments; do not inherit V1 pin assumptions, especially V1 SET-on-GPIO10 |
+| Recovery | USB-only WCH serial bridge enabled ESP32-C3 ROM read and full stock backup **before the original unit was reflashed with DragonPWR** | The unit no longer runs stock firmware; returning to stock depends on an **untested raw-backup write and verification**. Prior USB-only DragonPWR startup/readback is not stock restore or OTA rollback acceptance |
 
-**Development decision:** M1 may proceed under separate implementation authorization with a distinct C3/40 MHz board selection, exact V2 partition definitions and disabled AC actuation. Any implementation that energizes AC or assumes GPIO18 timing must wait for separate physical characterization. #15 owns the unresolved behavior gates; M7 owns full recovery and powered qualification.
+**Development status:** Initial M1 C3/40 MHz build isolation, V2 partitions, inactive-output drivers and USB-only runtime acceptance are documented in [V2 M1 build and acceptance](V2_M1_BUILD.md). This does **not** close M0 physical unknowns or qualify active outputs. Further M1 acceptance and any M2 implementation that energizes AC/USB outputs or relies on GPIO18 timing require separately authorized physical characterization. #15 owns unresolved behavior gates; M7 owns recovery and powered qualification.
 
 ## Milestones and scoped issues
 
 Sequence is a dependency guide, not a schedule. There are no invented due dates.
-M1 follows M0; output and metering work use M1's reviewed board contract; policy
-uses output and printer observations; qualification follows implemented capabilities.
+Inactive-output M1 groundwork may proceed before M0 closes, as already demonstrated;
+M0 disposition gates physical output activation. Output and metering work use
+M1's reviewed board contract; policy uses output and printer observations;
+qualification follows implemented capabilities.
 
 | Gate | Exit criterion | Issues |
 |---|---|---|
@@ -106,6 +112,6 @@ Every implementation issue needs a separately scoped implementation task.
 Record exact source/dependency heads, target/configuration and artifact hashes.
 Keep static analysis, host tests, target compile, linked artifacts and physical
 acceptance separate. Green CI from V1 or a previous head does not qualify V2.
-Do not flash/erase, energize hardware, merge, tag or release under roadmap setup.
-Stop roadmap setup after documentation and issue organization, reporting any
-missing M0 evidence instead of silently advancing into firmware work.
+The roadmap itself does not authorize flashing, erasure, output actuation,
+merging, tagging or releases. Record unresolved M0 evidence explicitly and
+require separate authorization for subsequent implementation and physical tests.
