@@ -634,6 +634,14 @@ static esp_err_t power_page_get(httpd_req_t *req)
     return httpd_resp_sendstr(req, power_html_start);
 }
 
+// The shared UI uses polling on DragonPWR. Explicitly reject the SSE endpoint
+// so it cannot fall through to dc_portal's wildcard HTML dashboard handler.
+static esp_err_t unsupported_events_get(httpd_req_t *req)
+{
+    return httpd_resp_send_err(req, HTTPD_404_NOT_FOUND,
+                               "event streaming is not supported");
+}
+
 // ------------------------------------------------------ maintenance routes
 // The routes dc_ui's Maintenance card calls. They are DragonBreath's contract;
 // DragonPWR served none of them, so its Restart, Factory reset and Boot
@@ -826,6 +834,7 @@ static const httpd_uri_t ROUTES[] = {
     { .uri = "/api/v2/state",      .method = HTTP_GET,  .handler = state_get },
     { .uri = "/api/v2/logs",       .method = HTTP_GET,  .handler = logs_get },
     { .uri = "/api/v2/diag/http",  .method = HTTP_GET,  .handler = http_diag_get },
+    { .uri = "/api/v2/events",     .method = HTTP_GET,  .handler = unsupported_events_get },
     { .uri = "/api/v2/command",    .method = HTTP_POST, .handler = command_post },
     { .uri = "/api/v2/token",      .method = HTTP_POST, .handler = token_post },
     { .uri = "/api/v2/restart",       .method = HTTP_POST, .handler = restart_post },

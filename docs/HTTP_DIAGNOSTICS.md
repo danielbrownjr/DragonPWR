@@ -1,8 +1,8 @@
 # HTTP session-pressure diagnostics
 
 This experimental, read-only DragonPWR endpoint helps determine whether
-four-client HTTP session pressure correlates with browser-side
-`httpd_sock_err: ... 104` warnings. It does **not** classify LRU evictions:
+four-client HTTP session pressure correlates with device-side
+`httpd_sock_err: ... 104` warnings observed on the UART console. It does **not** classify LRU evictions:
 ESP-IDF's session-close callback does not report why a session closed.
 
 ## Querying
@@ -11,7 +11,7 @@ With the device powered via programming USB only and IEC disconnected:
 
 ```sh
 curl -fsS -H 'X-Dragon-Auth: web' \
-  http://192.168.8.151/api/v2/diag/http | jq .
+  http://<device-ip>/api/v2/diag/http | jq .
 ```
 
 The `web` sentinel works only when no control token is configured. If a
