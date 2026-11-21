@@ -5,11 +5,14 @@ import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
-from check_dc_ui_pin import validate, validate_other_manifests, UPSTREAM, FORK
+from check_dc_ui_pin import (validate, validate_other_manifests, parse_manifest,
+                              parse_lock, COMPONENTS, UPSTREAM, FORK)
 
-MANIFEST = Path("main/idf_component.yml").read_text(encoding="utf-8")
-LOCK = Path("dependencies.lock").read_text(encoding="utf-8")
-BASE = json.loads(Path("config/dragon_core_fork_pins.json").read_text())
+# Real checked-in configuration must always be validated separately from
+# synthetic source-policy fixtures, including when dc_ui uses the approved fork.
+ACTIVE_MANIFEST = Path("main/idf_component.yml").read_text(encoding="utf-8")
+ACTIVE_LOCK = Path("dependencies.lock").read_text(encoding="utf-8")
+ACTIVE_PINS = json.loads(Path("config/dragon_core_fork_pins.json").read_text())
 FORK_REV = "a" * 40
 UPSTREAM_BASE = "b" * 40
 TRACK = "https://github.com/justinh-rahb/dragon-core/pull/78"
@@ -26,16 +29,37 @@ def replace_component(content, component, field, old, new):
     return content[:start] + block.replace(needle, field + ": " + new) + content[end:]
 
 
+
+def upstream_fixture():
+    """Build a syntactically valid upstream-only policy fixture.
+
+    This is deliberately *not* the checked-in manifest/lock and does not claim
+    fork commits exist upstream. The actual checked-in pin is separately tested.
+    """
+    manifest, lock = ACTIVE_MANIFEST, ACTIVE_LOCK
+    for name in COMPONENTS:
+        if parse_manifest(manifest)[name]["git"] == FORK:
+            manifest = replace_component(manifest, name, "git", FORK, UPSTREAM)
+            lock = replace_component(lock, name, "git", FORK, UPSTREAM)
+    return manifest, lock
+
+
+MANIFEST, LOCK = upstream_fixture()
+BASE = {"fork_pins": {}}
+BASE_UI_REV = parse_manifest(MANIFEST)["dc_ui"]["version"]
+BASE_UI_HASH = parse_lock(LOCK)["dc_ui"]["component_hash"]
+
+
 def fork_fixture():
     manifest = replace_component(
         MANIFEST, "dc_ui", "git", UPSTREAM, FORK)
     manifest = replace_component(
         manifest, "dc_ui", "version",
-        "33e6e31f1e83a8184f1e8f028cb03ad19a00380f", FORK_REV)
+        BASE_UI_REV, FORK_REV)
     lock = replace_component(LOCK, "dc_ui", "git", UPSTREAM, FORK)
     lock = replace_component(
         lock, "dc_ui", "version",
-        "33e6e31f1e83a8184f1e8f028cb03ad19a00380f", FORK_REV)
+        BASE_UI_REV, FORK_REV)
     pins = {"fork_pins": {"dc_ui": {
         "revision": FORK_REV, "upstream_base": UPSTREAM_BASE,
         "tracking_url": TRACK,
@@ -48,7 +72,14 @@ def verify(manifest=MANIFEST, lock=LOCK, pins=None):
 
 
 class DependencyPolicyTests(unittest.TestCase):
-    def test_upstream_current_baseline(self):
+    def test_checked_in_configuration(self):
+        expected = "fork" if parse_manifest(ACTIVE_MANIFEST)["dc_ui"]["git"] == FORK else "upstream"
+        self.assertEqual(
+            validate(ACTIVE_MANIFEST, ACTIVE_LOCK, json.dumps(ACTIVE_PINS))["dc_ui"],
+            expected,
+        )
+
+    def test_upstream_policy_fixture(self):
         self.assertEqual(verify()["dc_ui"], "upstream")
 
     def test_fork_positive(self):
@@ -69,7 +100,7 @@ class DependencyPolicyTests(unittest.TestCase):
     def test_moving_branch_rejected(self):
         m = replace_component(
             MANIFEST, "dc_ui", "version",
-            "33e6e31f1e83a8184f1e8f028cb03ad19a00380f", "main")
+            BASE_UI_REV, "main")
         with self.assertRaisesRegex(ValueError, "exact SHA"):
             verify(m)
 
@@ -114,7 +145,7 @@ class DependencyPolicyTests(unittest.TestCase):
             verify(m)
 
     def test_bad_component_hash_rejected(self):
-        original = "b83f5fa81779f7898292c4ea863a93c95413886e6bda20f08923249edc17e4f2"
+        original = BASE_UI_HASH
         l = replace_component(LOCK, "dc_ui", "component_hash", original, "bad")
         with self.assertRaisesRegex(ValueError, "component hash"):
             verify(lock=l)
@@ -188,14 +219,14 @@ class DependencyPolicyTests(unittest.TestCase):
 
     def test_upstream_exact_sha_mismatch_rejected(self):
         m = replace_component(MANIFEST, "dc_ui", "version",
-                              "33e6e31f1e83a8184f1e8f028cb03ad19a00380f",
+                              BASE_UI_REV,
                               "f" * 40)
         with self.assertRaisesRegex(ValueError, "upstream manifest/lock"):
             verify(m)
 
     def test_upstream_dc_ui_tag_rejected(self):
         m = replace_component(MANIFEST, "dc_ui", "version",
-                              "33e6e31f1e83a8184f1e8f028cb03ad19a00380f",
+                              BASE_UI_REV,
                               "v0.30.0")
         with self.assertRaisesRegex(ValueError, "upstream manifest/lock"):
             verify(m)
