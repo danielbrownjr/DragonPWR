@@ -35,7 +35,7 @@ def component_section(source, name, filename):
 
 
 def field(block, name, component, filename):
-    indent = 6 if name in ("git", "path") else 4
+    indent = 6 if filename == FILES[1] and name in ("git", "path") else 4
     matches = re.findall(
         rf"(?m)^ {{{indent}}}{re.escape(name)}: ([^\r\n]+)$", block
     )
