@@ -12,6 +12,11 @@ on:
       - main/**
       - components/**
       - tests/check_dc_ui_pin.py
+      - tests/test_dragon_core_source_policy.py
+      - tests/check_events_route.py
+      - tests/check_power_recovery.mjs
+      - config/dragon_core_fork_pins.json
+      - docs/DRAGON_CORE_DEPENDENCIES.md
       - .github/workflows/firmware-build.yml
       - .github/workflows/release.yml
   push:
@@ -24,6 +29,11 @@ on:
       - main/**
       - components/**
       - tests/check_dc_ui_pin.py
+      - tests/test_dragon_core_source_policy.py
+      - tests/check_events_route.py
+      - tests/check_power_recovery.mjs
+      - config/dragon_core_fork_pins.json
+      - docs/DRAGON_CORE_DEPENDENCIES.md
       - .github/workflows/firmware-build.yml
       - .github/workflows/release.yml
   workflow_dispatch:
@@ -40,8 +50,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check dc_ui dependency pin and lock
-        run: python3 tests/check_dc_ui_pin.py
+      - name: Validate dragon-core provenance and locked pins
+        run: |
+          python3 tests/check_dc_ui_pin.py
+          python3 -m unittest discover -s tests -p 'test_dragon_core_source_policy.py' -v
 
       - name: Check unsupported events route contract
         run: python3 tests/check_events_route.py
@@ -93,8 +105,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check dc_ui dependency pin and lock
-        run: python3 tests/check_dc_ui_pin.py
+      - name: Validate dragon-core provenance and locked pins
+        run: |
+          python3 tests/check_dc_ui_pin.py
+          python3 -m unittest discover -s tests -p 'test_dragon_core_source_policy.py' -v
 
       - name: Build V2 ESP32-C3 with ESP-IDF 5.3.5
         run: |
