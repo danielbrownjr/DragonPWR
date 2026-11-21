@@ -139,6 +139,8 @@ jobs:
               grep -q "^CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions_v2.csv\"$" sdkconfig.v2
               grep -q "^CONFIG_ESPTOOLPY_FLASHSIZE=\"4MB\"$" sdkconfig.v2
               test "$(stat -c%s build-v2/dragonpwr.bin)" -le 2031616
+              ! grep -q "^CONFIG_DP_V2_GPIO7_EXPERIMENT=y$" sdkconfig.v2
+              ! grep -q "dp_v2_gpio7_experiment.c" build-v2/compile_commands.json
             '
 
       - name: Assert inactive V2 hardware is selected
@@ -207,5 +209,8 @@ jobs:
             build-v2-lab/EXPERIMENTAL-NOT-RELEASE.txt
             build-v2-lab/dragonpwr.bin
             build-v2-lab/dragonpwr.elf
+            build-v2-lab/bootloader/bootloader.bin
+            build-v2-lab/partition_table/partition-table.bin
+            build-v2-lab/ota_data_initial.bin
             build-v2-lab/flasher_args.json
             sdkconfig.v2.lab
