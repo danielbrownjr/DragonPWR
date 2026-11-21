@@ -223,8 +223,8 @@ class DependencyPolicyTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             p = Path(tmp) / "dp_other" / "idf_component.yml"
             p.parent.mkdir()
-            p.write_text("dependencies:\\n  evil:\\n    git: https://github.com/attacker/evil.git\\n"
-                         "    version: main\\n", encoding="utf-8")
+            p.write_text("dependencies:\n  evil:\n    git: https://github.com/attacker/evil.git\n"
+                         "    version: main\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "unapproved Git"):
                 validate_other_manifests(Path(tmp))
 
@@ -232,8 +232,8 @@ class DependencyPolicyTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             p = Path(tmp) / "dp_portal" / "idf_component.yml"
             p.parent.mkdir()
-            p.write_text("dependencies:\\n  espressif/cjson:\\n"
-                         "    version: \\"1.7.19\\"\\n", encoding="utf-8")
+            p.write_text("dependencies:\n  espressif/cjson:\n"
+                         "    version: \"1.7.19\"\n", encoding="utf-8")
             validate_other_manifests(Path(tmp))
 
 
