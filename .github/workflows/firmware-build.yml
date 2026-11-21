@@ -140,6 +140,7 @@ jobs:
               grep -q "^CONFIG_ESPTOOLPY_FLASHSIZE=\"4MB\"$" sdkconfig.v2
               test "$(stat -c%s build-v2/dragonpwr.bin)" -le 2031616
               ! grep -q "^CONFIG_DP_V2_GPIO7_EXPERIMENT=y$" sdkconfig.v2 || exit 1
+              test -f build-v2/compile_commands.json
               ! grep -q "dp_v2_gpio7_experiment.c" build-v2/compile_commands.json || exit 1
             '
 
