@@ -52,6 +52,7 @@ int gpio_set_direction(int pin, int direction);
 #include <assert.h>
 #include <stdint.h>
 #include "sdkconfig.h"
+#include "driver/gpio.h"
 #include "dp_v2_experiment.h"
 static int stage;
 static int last_level = -1;
