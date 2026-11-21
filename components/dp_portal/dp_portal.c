@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "cJSON.h"
 #include "dc_evlog.h"
@@ -633,6 +634,14 @@ static esp_err_t power_page_get(httpd_req_t *req)
     return httpd_resp_sendstr(req, power_html_start);
 }
 
+// The shared UI uses polling on DragonPWR. Explicitly reject the SSE endpoint
+// so it cannot fall through to dc_portal's wildcard HTML dashboard handler.
+static esp_err_t unsupported_events_get(httpd_req_t *req)
+{
+    return httpd_resp_send_err(req, HTTPD_404_NOT_FOUND,
+                               "event streaming is not supported");
+}
+
 // ------------------------------------------------------ maintenance routes
 // The routes dc_ui's Maintenance card calls. They are DragonBreath's contract;
 // DragonPWR served none of them, so its Restart, Factory reset and Boot
@@ -739,6 +748,84 @@ static esp_err_t boot_inactive_post(httpd_req_t *req)
     return reply_and_restart(req, event);
 }
 
+// ---------------------------------------------------- HTTP session diagnostics
+// Connection callbacks run in the HTTP server task, as does the diagnostic GET.
+// No heap allocation, extra FreeRTOS task, socket-policy change or GPIO access.
+#define DP_HTTP_MAX_CLIENTS 4
+
+typedef struct {
+    uint32_t opened;
+    uint32_t closed;
+    uint32_t opened_at_limit;
+    uint32_t closed_at_limit;
+    uint16_t active;
+    uint16_t peak;
+} dp_http_session_diag_t;
+
+static dp_http_session_diag_t s_http_sessions;
+
+static esp_err_t http_session_open(httpd_handle_t server, int sockfd)
+{
+    (void)server;
+    ++s_http_sessions.opened;
+    ++s_http_sessions.active;
+    if (s_http_sessions.active > s_http_sessions.peak) {
+        s_http_sessions.peak = s_http_sessions.active;
+    }
+    if (s_http_sessions.active >= DP_HTTP_MAX_CLIENTS) {
+        ++s_http_sessions.opened_at_limit;
+    }
+    ESP_LOGD(TAG, "HTTP client opened: fd=%d active=%u", sockfd,
+             (unsigned)s_http_sessions.active);
+    return ESP_OK;
+}
+
+static void http_session_close(httpd_handle_t server, int sockfd)
+{
+    (void)server;
+    ++s_http_sessions.closed;
+    if (s_http_sessions.active >= DP_HTTP_MAX_CLIENTS) {
+        ++s_http_sessions.closed_at_limit;
+    }
+    if (s_http_sessions.active > 0) {
+        --s_http_sessions.active;
+    }
+    ESP_LOGD(TAG, "HTTP client closed: fd=%d active=%u", sockfd,
+             (unsigned)s_http_sessions.active);
+    // A custom close_fn replaces the ESP-IDF default socket close. Closing the
+    // descriptor here is mandatory, including for already-invalid descriptors.
+    (void)close(sockfd);
+}
+
+// Read-only and auth-gated. Counters measure session pressure, not the reason
+// for each close: closed_at_limit alone does NOT establish an LRU eviction.
+static esp_err_t http_diag_get(httpd_req_t *req)
+{
+    if (!authorize(req, NULL)) {
+        return send_error(req, "403 Forbidden", "authorization required");
+    }
+    char json[384];
+    int n = snprintf(json, sizeof(json),
+        "{\"sessions\":{\"active\":%u,\"peak\":%u,\"opened\":%" PRIu32
+        ",\"closed\":%" PRIu32 ",\"opened_at_limit\":%" PRIu32
+        ",\"closed_at_limit\":%" PRIu32 ",\"limit\":%u,\"lru_enabled\":true},"
+        "\"heap\":{\"free\":%u,\"min_free\":%u,\"largest_block\":%u}}",
+        (unsigned)s_http_sessions.active, (unsigned)s_http_sessions.peak,
+        s_http_sessions.opened, s_http_sessions.closed,
+        s_http_sessions.opened_at_limit, s_http_sessions.closed_at_limit,
+        (unsigned)DP_HTTP_MAX_CLIENTS,
+        (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT),
+        (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT),
+        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+    if (n < 0 || (size_t)n >= sizeof(json)) {
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                                   "HTTP diagnostic response overflow");
+    }
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    return httpd_resp_sendstr(req, json);
+}
+
 // ------------------------------------------------------------------ routes
 
 static const httpd_uri_t ROUTES[] = {
@@ -746,6 +833,8 @@ static const httpd_uri_t ROUTES[] = {
     { .uri = "/api/v2/info",       .method = HTTP_GET,  .handler = info_get },
     { .uri = "/api/v2/state",      .method = HTTP_GET,  .handler = state_get },
     { .uri = "/api/v2/logs",       .method = HTTP_GET,  .handler = logs_get },
+    { .uri = "/api/v2/diag/http",  .method = HTTP_GET,  .handler = http_diag_get },
+    { .uri = "/api/v2/events",     .method = HTTP_GET,  .handler = unsupported_events_get },
     { .uri = "/api/v2/command",    .method = HTTP_POST, .handler = command_post },
     { .uri = "/api/v2/token",      .method = HTTP_POST, .handler = token_post },
     { .uri = "/api/v2/restart",       .method = HTTP_POST, .handler = restart_post },
@@ -771,8 +860,11 @@ esp_err_t dp_portal_start(void)
     // recycle the least recently used one instead of refusing a fifth.
     // dc_portal still applies its stack floor on top of this.
     httpd_config_t http = HTTPD_DEFAULT_CONFIG();
-    http.max_open_sockets = 4;
+    http.max_open_sockets = DP_HTTP_MAX_CLIENTS;
     http.lru_purge_enable = true;
+    http.open_fn = http_session_open;
+    http.close_fn = http_session_close;
+    memset(&s_http_sessions, 0, sizeof(s_http_sessions));
 
     const dc_portal_config_t config = {
         .product             = DP_PRODUCT,

@@ -13,6 +13,10 @@ on:
       - components/**
       - tests/check_dc_ui_pin.py
       - tests/test_dragon_core_source_policy.py
+      - tests/check_http_diagnostics.py
+      - docs/HTTP_DIAGNOSTICS.md
+      - tests/check_events_route.py
+      - tests/check_power_recovery.mjs
       - config/dragon_core_fork_pins.json
       - docs/DRAGON_CORE_DEPENDENCIES.md
       - .github/workflows/firmware-build.yml
@@ -28,6 +32,10 @@ on:
       - components/**
       - tests/check_dc_ui_pin.py
       - tests/test_dragon_core_source_policy.py
+      - tests/check_http_diagnostics.py
+      - docs/HTTP_DIAGNOSTICS.md
+      - tests/check_events_route.py
+      - tests/check_power_recovery.mjs
       - config/dragon_core_fork_pins.json
       - docs/DRAGON_CORE_DEPENDENCIES.md
       - .github/workflows/firmware-build.yml
@@ -51,8 +59,14 @@ jobs:
           python3 tests/check_dc_ui_pin.py
           python3 -m unittest discover -s tests -p 'test_dragon_core_source_policy.py' -v
 
+      - name: Check unsupported events route contract
+        run: python3 tests/check_events_route.py
+
       - name: Check DragonPWR recovery UI behavior
         run: node tests/check_power_recovery.mjs
+
+      - name: Check HTTP session diagnostics invariants
+        run: python3 tests/check_http_diagnostics.py
 
       - name: Build ESP32-C2 firmware with ESP-IDF 5.3.5
         run: |
