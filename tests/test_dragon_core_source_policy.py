@@ -130,5 +130,93 @@ class DependencyPolicyTests(unittest.TestCase):
             verify(pins=p)
 
 
+    def test_lock_source_flow_map_and_nested_decoy_rejected(self):
+        # The attack demonstrated in independent review DP36-01: decoy Git
+        # fields in the nested dependency list and a real flow-map source.
+        l = LOCK.replace(
+            "  dc_ui:\n    component_hash:",
+            "  dc_ui:\n    component_hash:", 1)
+        component_start = l.index("  dc_ui:\n")
+        component_end = l.index("  dc_wifi:\n", component_start)
+        block = l[component_start:component_end]
+        block = block.replace(
+            "    - name: idf\n      version: '>=5.3'\n",
+            "    - name: idf\n      git: " + UPSTREAM +
+            "\n      path: components/dc_ui\n      version: '>=5.3'\n", 1)
+        block = block.replace(
+            "    source:\n      git: " + UPSTREAM +
+            "\n      path: components/dc_ui\n      type: git",
+            "    source: {git: 'https://github.com/attacker/evil.git', "
+            "path: components/dc_ui, type: git}", 1)
+        l = l[:component_start] + block + l[component_end:]
+        with self.assertRaisesRegex(ValueError, "unsupported YAML syntax"):
+            verify(lock=l)
+
+    def test_legacy_upstream_tag_lock_sha_drift_rejected(self):
+        l = replace_component(LOCK, "dc_evlog", "version",
+                              "8d5a61de8544a5b82cc3c6d9c7dc593ce06bb8bd",
+                              "e" * 40)
+        with self.assertRaisesRegex(ValueError, "legacy upstream tag lock SHA drift"):
+            verify(lock=l)
+
+    def test_unknown_manifest_git_component_rejected(self):
+        m = MANIFEST + "  dc_moonraker:\n    git: https://github.com/attacker/evil.git\n    version: main\n"
+        with self.assertRaisesRegex(ValueError, "unexpected/missing dependency"):
+            verify(m)
+
+    def test_unknown_manifest_component_key_rejected(self):
+        m = MANIFEST.replace(
+            "  dc_ui:\n", "  dc_ui:\n    override_path: ../vendor/dc_ui\n", 1)
+        with self.assertRaisesRegex(ValueError, "unsupported/missing dependency key"):
+            verify(m)
+
+    def test_unknown_lock_dependency_rejected(self):
+        l = LOCK.replace(
+            "  dc_ui:\n",
+            "  evil_dependency:\n    source: {git: https://github.com/attacker/repo}\n  dc_ui:\n", 1)
+        with self.assertRaisesRegex(ValueError, "unsupported YAML syntax"):
+            verify(lock=l)
+
+    def test_lock_source_path_rejected(self):
+        l = replace_component(LOCK, "dc_ui", "path",
+                              "components/dc_ui", "components/dc_portal")
+        with self.assertRaisesRegex(ValueError, "component path"):
+            verify(lock=l)
+
+    def test_upstream_exact_sha_mismatch_rejected(self):
+        m = replace_component(MANIFEST, "dc_ui", "version",
+                              "33e6e31f1e83a8184f1e8f028cb03ad19a00380f",
+                              "f" * 40)
+        with self.assertRaisesRegex(ValueError, "upstream manifest/lock"):
+            verify(m)
+
+    def test_upstream_dc_ui_tag_rejected(self):
+        m = replace_component(MANIFEST, "dc_ui", "version",
+                              "33e6e31f1e83a8184f1e8f028cb03ad19a00380f",
+                              "v0.30.0")
+        with self.assertRaisesRegex(ValueError, "upstream manifest/lock"):
+            verify(m)
+
+    def test_tracking_url_wrong_repo_rejected(self):
+        m, l, p = fork_fixture()
+        p["fork_pins"]["dc_ui"]["tracking_url"] = (
+            "https://github.com/justinh-rahb/other-repo/pull/78")
+        with self.assertRaisesRegex(ValueError, "tracking_url"):
+            verify(m, l, p)
+
+    def test_lock_flow_and_yaml_alias_rejected(self):
+        l = LOCK.replace(
+            "      type: git\n",
+            "      type: git\n      extra: &sneaky evil\n", 1)
+        with self.assertRaisesRegex(ValueError, "unsupported YAML syntax"):
+            verify(lock=l)
+
+    def test_unexpected_registry_source_rejected(self):
+        l = LOCK.replace("registry_url: https://components.espressif.com/",
+                         "git: https://github.com/attacker/evil.git", 1)
+        with self.assertRaisesRegex(ValueError, "unexpected repository or source"):
+            verify(lock=l)
+
+
 if __name__ == "__main__":
     unittest.main()
