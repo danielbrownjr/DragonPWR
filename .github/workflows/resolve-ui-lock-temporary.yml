@@ -1,0 +1,28 @@
+# Temporary read-only lock resolution job for a scoped integration branch.
+# Remove this workflow after committing the solver-generated lockfile.
+name: Resolve DragonPWR UI fork lock (temporary)
+on:
+  push:
+    branches: [integrate/dragonpwr-ui-pr78-fork]
+    paths:
+      - .github/workflows/resolve-ui-lock-temporary.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out integration branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Resolve ESP-IDF 5.3.5 lock for C2
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$GITHUB_WORKSPACE:/work" -w /work espressif/idf:v5.3.5 \
+            bash -lc 'set -euo pipefail; git config --global --add safe.directory /work; idf.py -D IDF_TARGET=esp32c2 reconfigure'
+      - name: Print solver-generated lock for exact review
+        run: |
+          set -euo pipefail
+          echo 'BEGIN_GENERATED_DRAGONPWR_LOCK'
+          cat dependencies.lock
+          echo 'END_GENERATED_DRAGONPWR_LOCK'
