@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Positive/negative dependency-policy regression tests (no extra packages)."""
 import json
+import re
 from pathlib import Path
 import unittest
 from check_dc_ui_pin import validate, UPSTREAM, FORK
@@ -15,9 +16,8 @@ TRACK = "https://github.com/justinh-rahb/dragon-core/pull/78"
 
 def replace_component(content, component, field, old, new):
     start = content.index("  " + component + ":\n")
-    end = content.find("\n  ", start + 3)
-    if end < 0:
-        end = len(content)
+    match = re.search(r"\n  (?=[A-Za-z_][\\w./-]*:)", content[start + 3:])
+    end = start + 3 + match.start() if match else len(content)
     block = content[start:end]
     needle = field + ": " + old
     if block.count(needle) != 1:
