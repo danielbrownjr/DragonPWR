@@ -16,7 +16,7 @@ TRACK = "https://github.com/justinh-rahb/dragon-core/pull/78"
 
 def replace_component(content, component, field, old, new):
     start = content.index("  " + component + ":\n")
-    match = re.search(r"\n  (?=[A-Za-z_][\\w./-]*:)", content[start + 3:])
+    match = re.search(r"\n  (?=[A-Za-z_][\w./-]*:)", content[start + 3:])
     end = start + 3 + match.start() if match else len(content)
     block = content[start:end]
     needle = field + ": " + old
