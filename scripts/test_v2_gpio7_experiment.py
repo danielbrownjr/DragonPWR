@@ -24,8 +24,8 @@ with tempfile.TemporaryDirectory(prefix="dragonpwr-gpio7-lab-") as directory:
     for directory_name in ("driver", "freertos"):
         (tmp / directory_name).mkdir()
     (tmp / "sdkconfig.h").write_text(
-        "#define CONFIG_IDF_TARGET_ESP32C3 1\\n"
-        "#define CONFIG_DP_V2_GPIO7_EXPERIMENT 1\\n".replace("\\\\n", "\\n")
+        ("#define CONFIG_IDF_TARGET_ESP32C3 1\\n"
+         "#define CONFIG_DP_V2_GPIO7_EXPERIMENT 1\\n").replace("\\\\n", "\\n")
     )
     (tmp / "esp_err.h").write_text(
         "typedef int esp_err_t;\\n#define ESP_OK 0\\n#define ESP_ERR_INVALID_ARG 0x102\\n"
@@ -38,7 +38,7 @@ with tempfile.TemporaryDirectory(prefix="dragonpwr-gpio7-lab-") as directory:
         .replace("\\\\n", "\\n")
     )
     (tmp / "esp_log.h").write_text(
-        '#define ESP_LOGW(...) ((void)0)\\n#define ESP_LOGE(...) ((void)0)\\n'
+        '#define ESP_LOGW(tag, ...) ((void)(tag))\\n#define ESP_LOGE(tag, ...) ((void)(tag))\\n'
         '#define esp_err_to_name(err) "err"\\n'.replace("\\\\n", "\\n")
     )
     (tmp / "freertos/FreeRTOS.h").write_text(
