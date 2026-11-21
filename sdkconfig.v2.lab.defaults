@@ -1,0 +1,18 @@
+# Use as an explicit alternative to sdkconfig.defaults (which is C2-only).
+# ESP32-C3 AZ rev 1.1, 40 MHz crystal, 4 MiB DIO flash.
+CONFIG_IDF_TARGET="esp32c3"
+CONFIG_XTAL_FREQ_40=y
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_v2.csv"
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=2048
+CONFIG_HTTPD_MAX_URI_LEN=1024
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+# Resource-tuning values below are not carried forward from C2;
+# establish a C3 resource budget on a separately authorized test device.
+# Experimental AC GPIO7 pulse route. LAB ONLY: never enable for unattended use.
+CONFIG_DP_V2_GPIO7_EXPERIMENT=y
