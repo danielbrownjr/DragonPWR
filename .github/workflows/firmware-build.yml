@@ -148,10 +148,11 @@ jobs:
         run: |
           set -euo pipefail
           test -f build-v2/dragonpwr.elf
+          test -f build-v2/compile_commands.json
           grep -q 'dp_relay_v2_inactive.c' build-v2/compile_commands.json
           grep -q 'dp_button_v2_inactive.c' build-v2/compile_commands.json
-          ! grep -Eq '/dp_relay/dp_relay.c[" ]' build-v2/compile_commands.json
-          ! grep -Eq '/dp_button/dp_button.c[" ]' build-v2/compile_commands.json
+          ! grep -Eq '/dp_relay/dp_relay.c[" ]' build-v2/compile_commands.json || exit 1
+          ! grep -Eq '/dp_button/dp_button.c[" ]' build-v2/compile_commands.json || exit 1
 
       - name: Upload V2 C3 firmware build outputs
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
