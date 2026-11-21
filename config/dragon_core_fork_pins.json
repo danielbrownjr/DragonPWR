@@ -1,0 +1,9 @@
+{
+  "fork_pins": {
+    "dc_ui": {
+      "revision": "91c4ee12aa5e21e8fa0a29549215d0bf3c77b3ce",
+      "upstream_base": "c1bb4f33bfeafa90fa697e13361dcebef60854e1",
+      "tracking_url": "https://github.com/justinh-rahb/dragon-core/pull/78"
+    }
+  }
+}

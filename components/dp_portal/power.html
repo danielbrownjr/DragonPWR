@@ -3,154 +3,267 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DragonPWR</title>
-<!--
-  Stopgap control page, served at /power. dc_ui has no DragonPWR surface yet
-  (docs/ROADMAP.md), so the family SPA shows another product's dashboard and
-  cannot switch the outputs. Delete this once dc_ui carries a dragonpwr view.
-
-  Same colour tokens as dc_ui, same stored theme (db_theme) and the same
-  control-token transport (db_tok, X-Dragon-Auth + legacy header, prompt on
-  403), so it behaves like the rest of the family.
--->
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>DragonPWR · Power</title>
 <style>
-:root{
-  color-scheme: light dark;
-  --background: light-dark(rgb(255 255 255), rgb(24 24 24));
-  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
-  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
-  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
-  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
-  --muted-foreground: light-dark(rgb(26 28 31 / 49.4%), rgb(255 255 255 / 49.8%));
-  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
-  --ok: light-dark(rgb(93 201 119), rgb(116 213 139));
-  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
-  --font-sans: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
-}
-:root[data-theme="light"]{ color-scheme: light; }
-:root[data-theme="dark"]{ color-scheme: dark; }
-*{ box-sizing: border-box; }
-body{ margin: 0; background: var(--background); color: var(--foreground);
-  font: 15px/1.4 var(--font-sans); }
-main{ max-width: 480px; margin: 0 auto; padding: 24px 16px; }
-h1{ font-size: 20px; margin: 0 0 4px; }
-.sub{ color: var(--muted-foreground); margin: 0 0 20px; font-size: 13px; }
-.card{ background: var(--card); border: 1px solid var(--border); border-radius: 8px;
-  padding: 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px; }
-.card .name{ flex: 1; }
-.card .name b{ display: block; font-size: 16px; }
-.card .name small{ color: var(--muted-foreground); }
-.dot{ width: 12px; height: 12px; border-radius: 50%; background: var(--muted-foreground); flex: none; }
-.on .dot{ background: var(--ok); box-shadow: 0 0 8px var(--ok); }
-button{ font: inherit; font-weight: 600; min-width: 84px; padding: 10px 16px; border-radius: 8px;
-  border: 1px solid var(--border); background: var(--card); color: var(--foreground); cursor: pointer; }
-button.go{ background: var(--primary); color: var(--primary-foreground); border-color: transparent; }
-button.stop{ background: var(--destructive); color: #fff; border-color: transparent; }
-button:disabled{ opacity: .5; cursor: default; }
-#msg{ min-height: 1.4em; font-size: 13px; margin: 8px 0 0; }
-#msg.err{ color: var(--destructive); }
-footer{ margin-top: 20px; font-size: 13px; color: var(--muted-foreground); }
-footer a{ color: var(--primary); }
+/* Dragon-family palette and theme key, aligned with dc_ui and DragonBreath. */
+:root{color-scheme:light dark;
+ --bg:light-dark(rgb(255 255 255),rgb(24 24 24));
+ --text:light-dark(rgb(26 28 31),rgb(255 255 255));
+ --card:color-mix(in oklab,var(--text) 5%,transparent);
+ --accent:light-dark(rgb(51 156 255),rgb(131 195 255));
+ --accent-text:light-dark(#fff,#0d0d0d);
+ --muted:light-dark(rgb(26 28 31 / 55%),rgb(255 255 255 / 58%));
+ --border:light-dark(rgb(26 28 31 / 10%),rgb(255 255 255 / 10%));
+ --input:light-dark(rgb(26 28 31 / 7%),rgb(255 255 255 / 7%));
+ --good:light-dark(#217c47,#74d58b);
+ --bad:light-dark(#b63c16,#ff8549)}
+:root[data-theme=light]{color-scheme:light}
+:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,system-ui,"Segoe UI",Roboto,sans-serif}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+.wrap{width:min(100%,880px);margin:auto;padding:22px 18px 50px}
+header{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:24px}
+.brand{display:flex;align-items:center;gap:12px}
+.mark{width:42px;height:42px;border:1px solid var(--border);border-radius:12px;background:var(--card);display:grid;place-items:center;color:var(--accent);font-size:25px;font-weight:800}
+.brand strong{display:block;font-size:18px;letter-spacing:-.4px;line-height:1.15}
+.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;color:var(--muted)}
+nav{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+nav a{font-size:13px;color:var(--muted)}
+nav a[aria-current=page]{color:var(--text);font-weight:700}
+.hero{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin:0 0 18px;flex-wrap:wrap}
+h1{font-size:clamp(24px,4vw,32px);letter-spacing:-.8px;margin:6px 0 6px}
+h2{font-size:15px;margin:0 0 14px}
+p{margin:0}
+.sub{color:var(--muted);max-width:50ch}
+.status{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:999px;padding:8px 12px;white-space:nowrap;font-size:12px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+.status.ok .dot,.live .dot{background:var(--good)}
+.status.err .dot{background:var(--bad)}
+.panel{border:1px solid var(--border);border-radius:14px;background:var(--card);padding:20px;margin:0 0 14px}
+.notice{border-left:3px solid var(--accent);background:var(--input);padding:12px 14px;border-radius:0 8px 8px 0;margin:0 0 16px}
+.notice strong{display:block;margin-bottom:2px}
+.notice small{color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.channel{background:var(--input);border:1px solid var(--border);border-radius:11px;padding:17px;min-width:0}
+.channel-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.channel h3{font-size:15px;margin:0}
+.caption{font-size:12px;color:var(--muted);margin:3px 0 14px}
+.state{display:flex;gap:8px;align-items:center;font-weight:700;margin:0 0 13px}
+.state.unknown{color:var(--muted)}
+.state.on{color:var(--good)}
+button{font:inherit;font-weight:700;padding:10px 15px;border-radius:9px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer}
+button:disabled{opacity:.55;cursor:not-allowed}
+.channel button{width:100%}
+.channel button.primary{background:var(--accent);color:var(--accent-text);border-color:transparent}
+.channel button.danger{color:var(--bad)}
+.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.metric{background:var(--input);padding:14px;border-radius:9px;min-width:0}
+.metric b{display:block;font-size:19px;letter-spacing:-.5px;margin-top:4px;overflow-wrap:anywhere}
+.metric small{font-size:11px;color:var(--muted)}
+.meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}
+.meta label{display:block;color:var(--muted);font-size:11px}
+.meta code{display:block;font-size:12px;overflow-wrap:anywhere;margin-top:3px}
+#message{min-height:1.4em;margin:10px 0;color:var(--muted)}
+#message.err{color:var(--bad)}
+.maintenance-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.maintenance-actions button{flex:1;min-width:170px}
+#maintenance-message{min-height:1.4em;margin:12px 0 0;color:var(--muted)}
+#maintenance-message.err{color:var(--bad)}
+footer{font-size:12px;color:var(--muted);margin-top:18px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+@media(max-width:620px){header{align-items:flex-start}nav{gap:10px}.grid,.metrics{grid-template-columns:1fr}.meta{grid-template-columns:1fr}.panel{padding:16px}.wrap{padding:16px 12px 32px}}
 </style>
+<script>try{var theme=localStorage.getItem('db_theme');if(theme==='light'||theme==='dark')document.documentElement.setAttribute('data-theme',theme)}catch(e){}</script>
 </head>
 <body>
-<main>
-  <h1>DragonPWR</h1>
-  <p class="sub" id="conn">Connecting…</p>
-
-  <div class="card" id="c-mains">
-    <span class="dot"></span>
-    <span class="name"><b>Outlet</b><small id="s-mains">--</small></span>
-    <button type="button" id="b-mains" disabled>--</button>
+<div class="wrap">
+<header>
+  <div class="brand"><div class="mark" aria-hidden="true">ϟ</div><div><span class="eyebrow">Dragon family</span><strong>DragonPWR</strong></div></div>
+  <nav aria-label="Navigation"><a href="/power" aria-current="page">Power</a><a href="/">Settings &amp; setup</a><a href="/fw">Firmware</a><a href="/console">Console</a></nav>
+</header>
+<div class="hero">
+  <div><span class="eyebrow">Device overview</span><h1>Power &amp; status</h1><p class="sub">Outlet control, USB power and system health in one place.</p></div>
+  <div class="status" id="connection" role="status"><span class="dot"></span><span id="connection-text">Connecting</span></div>
+</div>
+<div class="notice" id="safety"><strong id="safety-title">Checking hardware support</strong><small id="safety-detail">Outputs remain unavailable until the device confirms its capabilities.</small></div>
+<section class="panel" aria-labelledby="outputs-title">
+  <h2 id="outputs-title">Outputs</h2>
+  <div class="grid">
+    <div class="channel"><div class="channel-head"><h3>AC outlet</h3><span class="eyebrow">Mains</span></div><p class="caption">Switched outlet</p><p class="state unknown" id="mains-status"><span class="dot"></span><span id="mains-text">Unknown</span></p><button id="mains-button" disabled>Unavailable</button></div>
+    <div class="channel"><div class="channel-head"><h3>USB power</h3><span class="eyebrow">USB 1</span></div><p class="caption">Controlled USB output</p><p class="state unknown" id="usb1-status"><span class="dot"></span><span id="usb1-text">Unknown</span></p><button id="usb1-button" disabled>Unavailable</button></div>
   </div>
-  <div class="card" id="c-usb1">
-    <span class="dot"></span>
-    <span class="name"><b>USB 1</b><small id="s-usb1">--</small></span>
-    <button type="button" id="b-usb1" disabled>--</button>
-  </div>
-
-  <p id="msg" role="status" aria-live="polite"></p>
-  <footer>After a power cut: <span id="restore">--</span> ·
-    <a href="/">Settings &amp; setup</a><br>
-    Memory: <span id="heap">--</span></footer>
-</main>
+  <p id="message" role="status" aria-live="polite"></p>
+</section>
+<section class="panel" aria-labelledby="health-title">
+  <h2 id="health-title">System health</h2>
+  <div class="metrics"><div class="metric"><small>Free memory</small><b id="free">—</b></div><div class="metric"><small>Minimum free</small><b id="minimum">—</b></div><div class="metric"><small>Largest block</small><b id="largest">—</b></div></div>
+  <div class="meta"><div><label>Firmware</label><code id="firmware">—</code></div><div><label>Device ID</label><code id="device-id">—</code></div><div><label>Boot session</label><code id="boot-id">—</code></div><div><label>Restore policy</label><code id="restore">—</code></div></div>
+</section>
+<section class="panel" aria-labelledby="maintenance-title">
+  <h2 id="maintenance-title">Recovery &amp; maintenance</h2>
+  <p class="caption">Restarting interrupts power control. Switch the AC outlet off first. An unknown outlet state is not proof that it is off.</p>
+  <div class="meta"><div><label>Inactive firmware slot</label><code id="inactive-slot">Unavailable</code></div></div>
+  <div class="maintenance-actions"><button id="restart-button" disabled>Restart device</button><button id="boot-inactive-button" disabled>Boot inactive slot</button></div>
+  <p id="maintenance-message" role="status" aria-live="polite"></p>
+</section>
+<footer><span>DragonPWR · Dragon-family firmware</span><span>Live status updates every 2 seconds</span></footer>
+</div>
 <script>
 (function(){
-  var t = null;
-  try{ t = localStorage.getItem('db_theme'); }catch(e){}
-  if(t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
-
-  function $(id){ return document.getElementById(id); }
-  function tok(){ try{ return localStorage.getItem('db_tok') || 'web'; }catch(e){ return 'web'; } }
-  function msg(text, err){ var m = $('msg'); m.textContent = text || ''; m.className = err ? 'err' : ''; }
-
-  var state = null, busy = false;
-
-  function render(){
-    if(!state || !state.outputs) return;
-    [['mains', 'Outlet'], ['usb1', 'USB 1']].forEach(function(o){
-      var on = !!state.outputs[o[0]];
-      $('c-' + o[0]).className = 'card' + (on ? ' on' : '');
-      $('s-' + o[0]).textContent = on ? 'On' : 'Off';
-      var b = $('b-' + o[0]);
-      b.textContent = on ? 'Turn off' : 'Turn on';
-      b.className = on ? 'stop' : 'go';
-      b.disabled = busy;
-    });
-    var names = { off: 'stays off', on: 'switches on', last: 'restores last state' };
-    $('restore').textContent = names[state.restore] || state.restore || '--';
-    var h = state.heap;
-    function kb(n){ return Math.round(n / 1024) + ' KB'; }
-    $('heap').textContent = h ? kb(h.free) + ' free · lowest ' + kb(h.min_free) +
-      ' · largest block ' + kb(h.largest_block) : '--';
-  }
-
-  function poll(){
-    fetch('/api/v2/state', { cache: 'no-store' })
-      .then(function(r){ if(!r.ok) throw 0; return r.json(); })
-      .then(function(s){ state = s; $('conn').textContent = 'Connected'; render(); })
-      .catch(function(){ $('conn').textContent = 'Not connected — retrying…'; })
-      .then(function(){ setTimeout(poll, 2000); });
-  }
-
-  function send(output, on, retried){
-    var t = tok();
-    return fetch('/api/v2/command', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Dragon-Auth': t, 'X-DragonBreath-Auth': t },
-      body: JSON.stringify({ output: output, on: on })
-    }).then(function(r){
-      return r.json().catch(function(){ return {}; }).then(function(j){
-        if(r.status === 403 && !retried){
-          try{ localStorage.removeItem('db_tok'); }catch(e){}
-          var entered = prompt('Control token');
-          if(entered){
-            try{ localStorage.setItem('db_tok', entered); }catch(e){}
-            return send(output, on, true);
-          }
-        }
-        if(!r.ok) throw j;
-        return j;
+'use strict';
+function $(id){return document.getElementById(id)}
+function msg(s,err){$('message').textContent=s||'';$('message').className=err?'err':''}
+function token(){try{return localStorage.getItem('db_tok')||'web'}catch(e){return 'web'}}
+var info=null,state=null,busy=false,maintenanceBusy=false,connected=false;
+function allowed(name){
+  return !!(connected&&info&&Array.isArray(info.capabilities)&&
+    info.capabilities.indexOf(name==='mains'?'power_switch':'usb_switch')!==-1&&
+    state&&state.outputs&&typeof state.outputs[name]==='boolean');
+}
+function memory(n){return typeof n==='number'&&isFinite(n)?Math.round(n/1024)+' KiB':'—'}
+function draw(){
+  var support=!!(info&&Array.isArray(info.capabilities)&&
+    (info.capabilities.indexOf('power_switch')!==-1||info.capabilities.indexOf('usb_switch')!==-1));
+  $('safety-title').textContent=support?'Output control available':'Output control not available';
+  $('safety-detail').textContent=support?
+    'Only supported outputs can be operated. Disconnecting mains may interrupt an active print.':
+    'This firmware does not expose verified output control. Displayed states are not physical measurements.';
+  ['mains','usb1'].forEach(function(name){
+    var active=allowed(name),on=active&&state.outputs[name]===true;
+    var label=active?(on?'On':'Off'):'Unavailable';
+    $(name+'-text').textContent=label;
+    $(name+'-status').className='state '+(active?(on?'on':'live'):'unknown');
+    var button=$(name+'-button');
+    button.disabled=busy||maintenanceBusy||!active;
+    button.textContent=active?(on?'Turn off':'Turn on'):'Control disabled';
+    button.className=active?(on?'danger':'primary'):'';
+  });
+  var h=state&&state.heap||{};
+  $('free').textContent=memory(h.free);$('minimum').textContent=memory(h.min_free);
+  $('largest').textContent=memory(h.largest_block);
+  $('restore').textContent=state&&typeof state.restore==='string'?state.restore:'Unavailable';
+  var slot=info&&info.inactive_slot;
+  $('inactive-slot').textContent=slot&&typeof slot.label==='string'&&typeof slot.project==='string'&&typeof slot.version==='string'?
+    slot.label+' · '+slot.project+' '+slot.version:'Unavailable';
+  // Unknown V2 outputs or stale boot identity cannot establish a safe mains-off state.
+  var canMaintain=connected&&!busy&&!maintenanceBusy&&info&&state&&
+    info.boot_id===state.boot_id&&state.outputs&&state.outputs.mains===false&&
+    Array.isArray(info.capabilities)&&info.capabilities.indexOf('power_switch')!==-1;
+  $('restart-button').disabled=!canMaintain;
+  $('boot-inactive-button').disabled=!canMaintain||!slot;
+}
+function connection(ok){
+  connected=ok;
+  $('connection').className='status '+(ok?'ok':'err');
+  $('connection-text').textContent=ok?'Connected':'Reconnecting';
+  draw();
+}
+function getJSON(path){return fetch(path,{cache:'no-store'}).then(function(r){if(!r.ok)throw Error(path);return r.json()})}
+function load(){
+  getJSON('/api/v2/state').then(function(next){
+    // Fetch device information only at startup, after errors, or on a new boot.
+    if(!info||!next.boot_id||info.boot_id!==next.boot_id){
+      // Immediately revoke prior controls while refreshing a changed boot session.
+      info=null;state=null;connection(false);
+      return getJSON('/api/v2/info').then(function(nextInfo){
+        if(!nextInfo.boot_id||nextInfo.boot_id!==next.boot_id)throw Error('boot changed during refresh');
+        info=nextInfo;
+        state=next;
       });
+    }
+    state=next;
+  }).then(function(){
+    $('firmware').textContent=info.firmware||'—';
+    $('device-id').textContent=info.device_id||'—';
+    $('boot-id').textContent=info.boot_id||'—';
+    connection(true);
+  }).catch(function(){info=null;state=null;connection(false)})
+    .then(function(){setTimeout(load,2000)});
+}
+function maintenanceMessage(message,error){
+  $('maintenance-message').textContent=message||'';
+  $('maintenance-message').className=error?'err':'';
+}
+function validateMaintenanceSession(expectedBoot){
+  // Revalidate after each blocking browser dialog, before a recovery POST.
+  // Firmware still independently enforces authentication and its mains-off guard.
+  return getJSON('/api/v2/state').then(function(fresh){
+    if(!connected||!info||!state||!expectedBoot||info.boot_id!==expectedBoot||
+       state.boot_id!==expectedBoot||fresh.boot_id!==expectedBoot||
+       !fresh.outputs||fresh.outputs.mains!==false||
+       !Array.isArray(info.capabilities)||info.capabilities.indexOf('power_switch')===-1){
+      info=null;state=null;connection(false);
+      throw Error('Device session or safe outlet state changed; reconnect and retry');
+    }
+    state=fresh;
+    return fresh;
+  });
+}
+function maintenancePost(path,retried,expectedBoot){
+  return validateMaintenanceSession(expectedBoot).then(function(){
+    var t=token();
+    return fetch(path,{method:'POST',headers:{'X-Dragon-Auth':t,'X-DragonBreath-Auth':t}});
+  }).then(function(r){
+    return r.json().catch(function(){return {}}).then(function(j){
+      if(r.status===403&&!retried){
+        try{localStorage.removeItem('db_tok')}catch(e){}
+        var entered=prompt('Control token');
+        if(entered){try{localStorage.setItem('db_tok',entered)}catch(e){};return maintenancePost(path,true,expectedBoot)}
+      }
+      if(!r.ok)throw j;
+      return j;
     });
-  }
-
-  function toggle(output){
-    if(!state || busy) return;
-    var on = !state.outputs[output];
-    // Cutting mains is the one action here that can hurt a print.
-    if(output === 'mains' && !on &&
-       !confirm('Turn the outlet off? This cuts power to whatever is plugged in.')) return;
-    busy = true; render(); msg('');
-    send(output, on)
-      .then(function(s){ if(s && s.outputs) state = s; })
-      .catch(function(j){ msg('Failed: ' + ((j && (j.message || j.error)) || 'no response'), true); })
-      .then(function(){ busy = false; render(); });
-  }
-
-  $('b-mains').addEventListener('click', function(){ toggle('mains'); });
-  $('b-usb1').addEventListener('click', function(){ toggle('usb1'); });
-  poll();
+  });
+}
+function maintenanceAction(which){
+  if(maintenanceBusy||busy||!connected||!info||!state||
+     info.boot_id!==state.boot_id||!state.outputs||state.outputs.mains!==false||
+     !Array.isArray(info.capabilities)||info.capabilities.indexOf('power_switch')===-1)return;
+  if(which==='boot-inactive'&&!info.inactive_slot)return;
+  var expectedBoot=info.boot_id;
+  var slot=info.inactive_slot;
+  var promptText=which==='boot-inactive'?
+    'Boot '+slot.label+' ('+slot.project+' '+slot.version+')? The device will restart, and the other firmware may not support rollback.':
+    'Restart DragonPWR? This temporarily interrupts power control.';
+  if(!confirm(promptText))return;
+  maintenanceBusy=true;draw();maintenanceMessage('Requesting '+(which==='boot-inactive'?'slot switch':'restart')+'…');
+  maintenancePost(which==='boot-inactive'?'/api/v2/boot-inactive':'/api/v2/restart',false,expectedBoot)
+    .then(function(){maintenanceMessage('Request accepted. Waiting for device to reconnect.');info=null;state=null;connection(false)})
+    .catch(function(err){maintenanceMessage('Request refused: '+((err&&(err.message||err.error))||'no response'),true)})
+    .then(function(){maintenanceBusy=false;draw()});
+}
+function send(output,on,retried){
+  var t=token();
+  return fetch('/api/v2/command',{method:'POST',headers:{
+    'Content-Type':'application/json','X-Dragon-Auth':t,'X-DragonBreath-Auth':t
+  },body:JSON.stringify({output:output,on:on})}).then(function(r){
+    return r.json().catch(function(){return {}}).then(function(j){
+      if(r.status===403&&!retried){
+        try{localStorage.removeItem('db_tok')}catch(e){}
+        var entered=prompt('Control token');
+        if(entered){try{localStorage.setItem('db_tok',entered)}catch(e){};return send(output,on,true)}
+      }
+      if(!r.ok)throw j;
+      return j;
+    });
+  });
+}
+function toggle(name){
+  if(busy||maintenanceBusy||!allowed(name))return;
+  var on=!state.outputs[name];
+  if(name==='mains'&&!on&&!confirm('Turn off the AC outlet? This cuts power to whatever is connected.'))return;
+  busy=true;draw();msg('');
+  send(name,on).then(function(next){if(next&&next.outputs)state=next})
+    .catch(function(err){msg('Command failed: '+((err&&(err.message||err.error))||'no response'),true)})
+    .then(function(){busy=false;draw()});
+}
+$('mains-button').addEventListener('click',function(){toggle('mains')});
+$('usb1-button').addEventListener('click',function(){toggle('usb1')});
+$('restart-button').addEventListener('click',function(){maintenanceAction('restart')});
+$('boot-inactive-button').addEventListener('click',function(){maintenanceAction('boot-inactive')});
+load();
 })();
 </script>
 </body>

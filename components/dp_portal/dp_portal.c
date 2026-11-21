@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "cJSON.h"
 #include "dc_evlog.h"
@@ -22,6 +23,7 @@
 #include "freertos/task.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "sdkconfig.h"
 
 static const char *TAG = "dp_portal";
 
@@ -282,12 +284,14 @@ static esp_err_t info_get(httpd_req_t *req)
         cJSON_AddStringToObject(slot, "version", other_desc.version);
     }
 
-    // The shared SPA gates optional screens on these. There is no dragonpwr
-    // surface in dc_ui yet, so today this only selects the common setup and
-    // recovery overlay - see docs/ROADMAP.md.
+    // The shared Dragon-family SPA uses these capabilities to decide whether
+    // the DragonPWR dashboard can offer a link to product-owned output controls.
+    // C3 V2 advertises no output control until hardware qualification.
     cJSON *caps = cJSON_AddArrayToObject(root, "capabilities");
+#if !defined(CONFIG_IDF_TARGET_ESP32C3)
     cJSON_AddItemToArray(caps, cJSON_CreateString("power_switch"));
     cJSON_AddItemToArray(caps, cJSON_CreateString("usb_switch"));
+#endif
     cJSON_AddItemToArray(caps, cJSON_CreateString("polling"));
 
     cJSON *ui = cJSON_AddObjectToObject(root, "ui");
@@ -300,11 +304,23 @@ static esp_err_t info_get(httpd_req_t *req)
 static esp_err_t state_get(httpd_req_t *req)
 {
     cJSON *root = cJSON_CreateObject();
+    // Include current boot identity in every snapshot. dc_ui may stay open
+    // across a reboot or OTA; these values must not go stale between info GETs.
+    const esp_app_desc_t *app = esp_app_get_description();
+    cJSON_AddStringToObject(root, "firmware", app ? app->version : "unknown");
+    cJSON_AddStringToObject(root, "boot_id", s_boot_id);
+    cJSON_AddStringToObject(root, "device_id", s_device_id);
     cJSON *outputs = cJSON_AddObjectToObject(root, "outputs");
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+    cJSON_AddNullToObject(outputs, "mains");
+    cJSON_AddNullToObject(outputs, "usb1");
+    cJSON_AddNullToObject(root, "restore");
+#else
     cJSON_AddBoolToObject(outputs, "mains", dp_relay_get(DP_OUTPUT_MAINS));
     cJSON_AddBoolToObject(outputs, "usb1", dp_relay_get(DP_OUTPUT_USB1));
     cJSON_AddStringToObject(root, "restore",
                             dp_restore_to_str(dp_relay_get_restore()));
+#endif
     // No meter and no printer source yet; both are declared null rather than
     // zeroed so a client can tell "not implemented" from "measured zero".
     cJSON_AddNullToObject(root, "meter");
@@ -453,7 +469,7 @@ static esp_err_t stock_set_post(httpd_req_t *req)
 static esp_err_t stock_state_get(httpd_req_t *req)
 {
     // The stock field set, so existing clients parse it unchanged. Meter values
-    // read zero until dp_meter lands; power_state and usb_state are real.
+    // read zero until dp_meter lands. V2 switch state is unavailable.
     cJSON *root = cJSON_CreateObject();
     cJSON_AddNumberToObject(root, "countdown_state", 0);
     cJSON_AddStringToObject(root, "auto_poweroff", "0");
@@ -461,8 +477,13 @@ static esp_err_t stock_state_get(httpd_req_t *req)
     cJSON_AddNumberToObject(root, "voltage", 0);
     cJSON_AddNumberToObject(root, "current", 0);
     cJSON_AddNumberToObject(root, "power", 0);
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+    cJSON_AddNullToObject(root, "power_state");
+    cJSON_AddNullToObject(root, "usb_state");
+#else
     cJSON_AddNumberToObject(root, "power_state", dp_relay_get(DP_OUTPUT_MAINS) ? 1 : 0);
     cJSON_AddNumberToObject(root, "usb_state", dp_relay_get(DP_OUTPUT_USB1) ? 1 : 0);
+#endif
     cJSON_AddNumberToObject(root, "ele", 0);
     return send_json(req, root);
 }
@@ -507,6 +528,9 @@ static cJSON *describe_product(void *ctx)
 {
     (void)ctx;
     cJSON *root = cJSON_CreateObject();
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+    cJSON_AddArrayToObject(root, "sections");
+#else
     cJSON *sections = cJSON_AddArrayToObject(root, "sections");
 
     cJSON *section = cJSON_CreateObject();
@@ -534,6 +558,7 @@ static cJSON *describe_product(void *ctx)
     }
     cJSON_AddItemToArray(fields, field);
     cJSON_AddItemToArray(sections, section);
+#endif
     return root;
 }
 
@@ -595,9 +620,9 @@ static esp_err_t factory_reset(void *ctx)
 }
 
 // -------------------------------------------------------------- /power
-// Stopgap control page (components/dp_portal/power.html): dc_ui has no
-// DragonPWR surface yet, so nothing in the SPA can switch the outputs. The page
-// itself is static and open; the command it POSTs is token-gated as usual.
+// Product-local output control page. The shared dc_ui owns the read-only
+// DragonPWR dashboard, while /power owns output commands and authentication.
+// The page is static; its POST requests remain token-gated.
 
 extern const char power_html_start[] asm("_binary_power_html_start");
 
@@ -607,6 +632,14 @@ static esp_err_t power_page_get(httpd_req_t *req)
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
     // EMBED_TXTFILES NUL-terminates the blob.
     return httpd_resp_sendstr(req, power_html_start);
+}
+
+// The shared UI uses polling on DragonPWR. Explicitly reject the SSE endpoint
+// so it cannot fall through to dc_portal's wildcard HTML dashboard handler.
+static esp_err_t unsupported_events_get(httpd_req_t *req)
+{
+    return httpd_resp_send_err(req, HTTPD_404_NOT_FOUND,
+                               "event streaming is not supported");
 }
 
 // ------------------------------------------------------ maintenance routes
@@ -715,6 +748,84 @@ static esp_err_t boot_inactive_post(httpd_req_t *req)
     return reply_and_restart(req, event);
 }
 
+// ---------------------------------------------------- HTTP session diagnostics
+// Connection callbacks run in the HTTP server task, as does the diagnostic GET.
+// No heap allocation, extra FreeRTOS task, socket-policy change or GPIO access.
+#define DP_HTTP_MAX_CLIENTS 4
+
+typedef struct {
+    uint32_t opened;
+    uint32_t closed;
+    uint32_t opened_at_limit;
+    uint32_t closed_at_limit;
+    uint16_t active;
+    uint16_t peak;
+} dp_http_session_diag_t;
+
+static dp_http_session_diag_t s_http_sessions;
+
+static esp_err_t http_session_open(httpd_handle_t server, int sockfd)
+{
+    (void)server;
+    ++s_http_sessions.opened;
+    ++s_http_sessions.active;
+    if (s_http_sessions.active > s_http_sessions.peak) {
+        s_http_sessions.peak = s_http_sessions.active;
+    }
+    if (s_http_sessions.active >= DP_HTTP_MAX_CLIENTS) {
+        ++s_http_sessions.opened_at_limit;
+    }
+    ESP_LOGD(TAG, "HTTP client opened: fd=%d active=%u", sockfd,
+             (unsigned)s_http_sessions.active);
+    return ESP_OK;
+}
+
+static void http_session_close(httpd_handle_t server, int sockfd)
+{
+    (void)server;
+    ++s_http_sessions.closed;
+    if (s_http_sessions.active >= DP_HTTP_MAX_CLIENTS) {
+        ++s_http_sessions.closed_at_limit;
+    }
+    if (s_http_sessions.active > 0) {
+        --s_http_sessions.active;
+    }
+    ESP_LOGD(TAG, "HTTP client closed: fd=%d active=%u", sockfd,
+             (unsigned)s_http_sessions.active);
+    // A custom close_fn replaces the ESP-IDF default socket close. Closing the
+    // descriptor here is mandatory, including for already-invalid descriptors.
+    (void)close(sockfd);
+}
+
+// Read-only and auth-gated. Counters measure session pressure, not the reason
+// for each close: closed_at_limit alone does NOT establish an LRU eviction.
+static esp_err_t http_diag_get(httpd_req_t *req)
+{
+    if (!authorize(req, NULL)) {
+        return send_error(req, "403 Forbidden", "authorization required");
+    }
+    char json[384];
+    int n = snprintf(json, sizeof(json),
+        "{\"sessions\":{\"active\":%u,\"peak\":%u,\"opened\":%" PRIu32
+        ",\"closed\":%" PRIu32 ",\"opened_at_limit\":%" PRIu32
+        ",\"closed_at_limit\":%" PRIu32 ",\"limit\":%u,\"lru_enabled\":true},"
+        "\"heap\":{\"free\":%u,\"min_free\":%u,\"largest_block\":%u}}",
+        (unsigned)s_http_sessions.active, (unsigned)s_http_sessions.peak,
+        s_http_sessions.opened, s_http_sessions.closed,
+        s_http_sessions.opened_at_limit, s_http_sessions.closed_at_limit,
+        (unsigned)DP_HTTP_MAX_CLIENTS,
+        (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT),
+        (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT),
+        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+    if (n < 0 || (size_t)n >= sizeof(json)) {
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                                   "HTTP diagnostic response overflow");
+    }
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    return httpd_resp_sendstr(req, json);
+}
+
 // ------------------------------------------------------------------ routes
 
 static const httpd_uri_t ROUTES[] = {
@@ -722,6 +833,8 @@ static const httpd_uri_t ROUTES[] = {
     { .uri = "/api/v2/info",       .method = HTTP_GET,  .handler = info_get },
     { .uri = "/api/v2/state",      .method = HTTP_GET,  .handler = state_get },
     { .uri = "/api/v2/logs",       .method = HTTP_GET,  .handler = logs_get },
+    { .uri = "/api/v2/diag/http",  .method = HTTP_GET,  .handler = http_diag_get },
+    { .uri = "/api/v2/events",     .method = HTTP_GET,  .handler = unsupported_events_get },
     { .uri = "/api/v2/command",    .method = HTTP_POST, .handler = command_post },
     { .uri = "/api/v2/token",      .method = HTTP_POST, .handler = token_post },
     { .uri = "/api/v2/restart",       .method = HTTP_POST, .handler = restart_post },
@@ -747,8 +860,11 @@ esp_err_t dp_portal_start(void)
     // recycle the least recently used one instead of refusing a fifth.
     // dc_portal still applies its stack floor on top of this.
     httpd_config_t http = HTTPD_DEFAULT_CONFIG();
-    http.max_open_sockets = 4;
+    http.max_open_sockets = DP_HTTP_MAX_CLIENTS;
     http.lru_purge_enable = true;
+    http.open_fn = http_session_open;
+    http.close_fn = http_session_close;
+    memset(&s_http_sessions, 0, sizeof(s_http_sessions));
 
     const dc_portal_config_t config = {
         .product             = DP_PRODUCT,

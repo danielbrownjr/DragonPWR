@@ -1,5 +1,31 @@
 #pragma once
 
+// Compile-time board boundary. ESP32-C3 V2 does NOT share the original
+// Panda PWR's electrical GPIO contract. Do not port V1 output GPIO macros.
+#include "sdkconfig.h"
+#include "driver/gpio.h"
+#include "driver/spi_common.h"
+#include "driver/uart.h"
+
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+
+// Panda PWR V2: static factory-firmware candidates, NOT qualified drive pins.
+// AC output is gated by the inactive V2 dp_relay implementation; no caller
+// may configure/drive these GPIOs until independent hardware validation.
+#define DP_V2_BOARD                  1
+#define DP_V2_PIN_AC_COMMAND         GPIO_NUM_7
+#define DP_V2_PIN_AC_EDGE_INPUT      GPIO_NUM_18
+#define DP_V2_PIN_USB_A_ENABLE       GPIO_NUM_0
+#define DP_V2_PIN_USB_C_ENABLE       GPIO_NUM_1
+#define DP_V2_PIN_METER_TX           GPIO_NUM_2
+#define DP_V2_PIN_METER_RX           GPIO_NUM_3
+#define DP_V2_METER_UART             UART_NUM_1
+#define DP_V2_METER_BAUD             9600
+// Physical purpose of GPIO6 and exact SET pins remain unidentified.
+// No outputs, strap GPIOs or key inputs are configured by M1.
+
+#elif defined(CONFIG_IDF_TARGET_ESP32C2)
+
 // Panda PWR hardware pin map.
 //
 // Recovered from the stock firmware (panda_pwr-v1.0.0.1.bin) by static
@@ -9,9 +35,6 @@
 // is load-bearing: it is derived from the stock firmware computing power_state
 // as `snez(gpio_get_level(7) - 1)`, i.e. reported ON when the pin reads LOW.
 
-#include "driver/gpio.h"
-#include "driver/spi_common.h"
-#include "driver/uart.h"
 
 // --- Mains relay -----------------------------------------------------------
 // ACTIVE LOW: driving this pin low energises the relay and switches the outlet
@@ -57,3 +80,7 @@
 // GPIO8, GPIO9  strapping (GPIO9 selects boot mode)
 // GPIO12..17    SPI flash on the ESP8684-MINI-1
 // GPIO19, 20    UART0 console (RX, TX)
+
+#else
+#error "DragonPWR supports only ESP32-C2 original and ESP32-C3 V2 targets"
+#endif

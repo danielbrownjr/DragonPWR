@@ -5,6 +5,20 @@ and V1 behavior remain unchanged. The M0–M7 breakdown below is proposed here;
 an earlier proposed breakdown was not available during setup on 2026-11-18.
 Issues define future work, not authorization to implement firmware or operate hardware.
 
+> **Status reconciliation (2026-11-21):** The initial November 18 evidence
+> baseline below remains a historical report-backed snapshot. Subsequent
+> DragonPWR work has introduced a distinct ESP32-C3 V2 build configuration
+> (`sdkconfig.v2.defaults`, `partitions_v2.csv`) with **inactive** V2
+> relay/button drivers, and merged the shared UI startup/polling integration
+> ([#37](https://github.com/danielbrownjr/DragonPWR/pull/37)).
+> These establish target-build/UI integration evidence, **not** verified AC/USB
+> output switching, metering, full restore, or powered V2 qualification.
+> Separate post-integration browser/hardware gaps are tracked in
+> [#38](https://github.com/danielbrownjr/DragonPWR/issues/38), with
+> [#39](https://github.com/danielbrownjr/DragonPWR/issues/39) tracking the
+> eventual upstream `dc_ui` repin. M0 evidence and physical safety gates remain
+> independently open.
+
 ## Evidence gate and status
 
 **M0 evidence reconciled on 2026-11-18; milestone remains open.** The original V2 reports were located and read in the connected personal Techbenders Drive (DragonPWR evidence folder). Their prior ROM/device observations and image-disassembly findings are now recorded in [#14](https://github.com/danielbrownjr/DragonPWR/issues/14) and [#15](https://github.com/danielbrownjr/DragonPWR/issues/15). This reconciliation did not re-execute hardware measurements or rehash the private binary.
@@ -52,9 +66,10 @@ uses output and printer observations; qualification follows implemented capabili
   [boot sequence](../main/app_main.c): review V1's inactive-level preload before
   output configuration and default-off restore policy as reusable patterns.
   GPIO readback is not measurement of outlet voltage or relay contacts.
-- [Portal](../components/dp_portal/dp_portal.c): API/auth, maintenance guards and
-  [temporary UI](../components/dp_portal/power.html). Printer-aware shutdown policy
-  does not exist on main and needs a product-level owner across command paths.
+- [Portal](../components/dp_portal/dp_portal.c): API/auth, maintenance guards,
+  [product-owned recovery UI](../components/dp_portal/power.html) and the
+  shared DragonPWR dashboard. Printer-aware shutdown policy does not exist on
+  main and needs a product-level owner across command paths.
 - [V1 hardware evidence](HARDWARE_ANALYSIS.md), [bench notes](BENCH_NOTES.md),
   [metering analysis](METERING_REVERSE_ENGINEERING.md) and
   [analysis tools](../analysis/README.md): comparison/reproduction references;
@@ -63,8 +78,12 @@ uses output and printer observations; qualification follows implemented capabili
   printer-observation work. Reconcile it before duplicating printer clients;
   preserve its separate review and V1 acceptance boundaries.
 - [Manifest](../main/idf_component.yml), [lock](../dependencies.lock),
-  [defaults](../sdkconfig.defaults) and [partition table](../partitions.csv)
-  describe V1. Any V2 selection must be explicit and preserve V1 defaults.
+  [V1 defaults](../sdkconfig.defaults) and [V1 partition table](../partitions.csv)
+  define shared dependencies and the V1 build baseline. The separately selected
+  [V2 defaults](../sdkconfig.v2.defaults) and
+  [V2 partitions](../partitions_v2.csv) now support an inactive-output
+  ESP32-C3 build; this is not physical output qualification. Keep V1 defaults
+  unchanged when extending V2.
 
 ## M0 acceptance
 

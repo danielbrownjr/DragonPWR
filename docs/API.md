@@ -41,7 +41,8 @@ Returns product identity and UI capabilities. Current fields include:
 - `version` and `firmware`
 - `device_id`, `boot_id`
 - optional `inactive_slot`
-- `capabilities`: currently `power_switch`, `usb_switch`, `polling`
+- `capabilities`: V1 advertises `power_switch`, `usb_switch`, and `polling`.
+  V2 currently advertises only `polling`.
 - `ui` descriptor
 
 ### `GET /api/v2/state`
@@ -50,6 +51,9 @@ Current Phase 1 state:
 
 ```json
 {
+  "firmware": "dragonpwr-version",
+  "device_id": "device-identifier",
+  "boot_id": "boot-session-identifier",
   "outputs": {"mains": false, "usb1": false},
   "restore": "off",
   "meter": null,
@@ -61,6 +65,10 @@ Current Phase 1 state:
   }
 }
 ```
+
+The example shows V1 controller state. On V2, `outputs.mains`, `outputs.usb1`,
+and `restore` are `null` because output control and restore are unavailable.
+Neither target reports a physical contact or voltage measurement through these fields.
 
 Heap values are bytes. `meter` and `printer` are deliberately `null` until
 those features exist so clients can distinguish "not implemented" from a real
@@ -76,8 +84,12 @@ Returns the current RAM event-log snapshot:
 
 ### `GET /power`
 
-Temporary DragonPWR-specific browser control page. The page itself is open; its
-commands use the authenticated command route.
+Permanent DragonPWR-owned control and recovery page, complementary to the shared
+read-only dashboard at `/`. The page is publicly readable, but output commands,
+Restart and Boot inactive slot use authenticated firmware routes. Recovery buttons
+require matching boot identities and an observed mains-off state; an unknown state
+(including V2) is not permission to reboot. The firmware independently enforces
+authorization and the maintenance safety guard.
 
 ## Mutation routes
 
@@ -134,7 +146,8 @@ character means on. Returns plain text `ok` on success.
 ### `GET /update_ele_data`
 
 Returns the stock field set. Until `dp_meter` lands, the meter fields are
-compatibility zeros while `power_state` and `usb_state` are real:
+compatibility zeros. `power_state` and `usb_state` are numeric controller
+states on V1 and `null` on V2:
 
 - `countdown_state`
 - `auto_poweroff`

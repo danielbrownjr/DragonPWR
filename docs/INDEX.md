@@ -12,7 +12,8 @@ DragonPWR is at a bench-verified Phase 1 baseline on real Panda PWR hardware:
 - Mains relay and USB1 switching are verified.
 - Safe boot and power-restore policy are implemented.
 - Product API, stock-compatible routes, control-token authorization, event log,
-  browser OTA, maintenance routes and the temporary `/power` UI are implemented.
+  browser OTA, maintenance routes, shared DragonPWR dashboard and permanent
+  product-owned `/power` control/recovery UI are implemented.
 - The HLW8112 metering hardware and stock metering algorithm are recovered, but
   `dp_meter` is not implemented yet.
 - Printer integration and the print-aware power interlock are not implemented yet.
@@ -24,14 +25,16 @@ gaps: where a component or trace is unverified, the docs say so.
 
 | Need | Canonical document |
 |---|---|
+| Set up native IDF and build either board | [Native ESP-IDF development](NATIVE_IDF.md) |
+| Compare IDF versions and inspect build evidence | [2026-11-18 native validation](validation/2026-11-18-native-idf.md) |
 | Install DragonPWR, back up stock, recover a unit | [Installation & Recovery](INSTALLATION_AND_RECOVERY.md) |
 | Understand boot order and component boundaries | [Architecture](ARCHITECTURE.md) |
 | Integrate against the HTTP surface | [API](API.md) |
 | See the hardware pin map and teardown evidence | [Hardware Analysis](HARDWARE_ANALYSIS.md) |
 | Implement or review metering | [Metering Reverse Engineering](METERING_REVERSE_ENGINEERING.md) |
 | Follow real bench evidence chronologically | [Bench Notes](BENCH_NOTES.md) |
-| See planned work and deliberate non-goals | [V1 roadmap](ROADMAP.md) |
-| Follow the separate proposed V2 planning track | [V2 roadmap](V2_ROADMAP.md) |
+| See V1 planned work and deliberate non-goals | [V1 roadmap](ROADMAP.md) |
+| Follow the separate provisional V2 planning track | [V2 roadmap](V2_ROADMAP.md) |
 | Reproduce stock-firmware analysis | [analysis/README.md](../analysis/README.md) |
 | Maintain the GitHub Wiki mirror | [Wiki publishing](WIKI.md) |
 | Cut and package firmware releases | [Releasing](RELEASING.md) |

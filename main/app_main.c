@@ -171,7 +171,13 @@ void app_main(void)
                  (unsigned)(heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT) / 1024),
                  (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024));
 
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+    // V2's inactive driver returns placeholder false, not measured output
+    // states. Never present those placeholders as physical mains/USB status.
+    ESP_LOGI(TAG, "up: V2 output controls disabled; AC/USB states unqualified");
+#else
     ESP_LOGI(TAG, "up: mains=%s usb1=%s",
              dp_relay_get(DP_OUTPUT_MAINS) ? "on" : "off",
              dp_relay_get(DP_OUTPUT_USB1) ? "on" : "off");
+#endif
 }

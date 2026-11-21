@@ -1,4 +1,7 @@
 dependencies:
+  # Preserve the existing lock's mDNS revision when IDF/manifest changes
+  # require dependency resolution for another build profile.
+  espressif/mdns: "1.12.0"
   dc_evlog:
     git: https://github.com/justinh-rahb/dragon-core.git
     path: components/dc_evlog
@@ -7,10 +10,12 @@ dependencies:
     git: https://github.com/justinh-rahb/dragon-core.git
     path: components/dc_wifi
     version: v0.30.0
+  # Controlled fork integration for upstream dragon-core PR #78.
+  # Review/CI and eventual upstream reconciliation are tracked separately.
   dc_ui:
-    git: https://github.com/justinh-rahb/dragon-core.git
+    git: https://github.com/danielbrownjr/dragon-core.git
     path: components/dc_ui
-    version: v0.30.0
+    version: 91c4ee12aa5e21e8fa0a29549215d0bf3c77b3ce
   dc_portal:
     git: https://github.com/justinh-rahb/dragon-core.git
     path: components/dc_portal

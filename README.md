@@ -1,5 +1,7 @@
 # DragonPWR
 
+![DragonPWR mascot and wordmark](docs/branding/dragonpwr-banner.png)
+
 Open firmware for the [BIGTREETECH Panda PWR](https://github.com/bigtreetech/PandaPWR),
 built on the shared [`dragon-core`](https://github.com/justinh-rahb/dragon-core)
 networking and printer-integration components.
@@ -16,8 +18,8 @@ Read [docs/HARDWARE_ANALYSIS.md](docs/HARDWARE_ANALYSIS.md) before you wire
 anything to mains.
 
 Once installed, the outlet is switched from `http://<device>/power`. The
-device's main page is the shared family UI, which has no DragonPWR dashboard
-yet; its Settings screen works.
+device's main page is the shared Dragon-family UI with a dedicated DragonPWR
+power-and-health dashboard and common setup/recovery interface.
 
 ## Hardware
 
@@ -120,6 +122,10 @@ $env:GIT_CONFIG_COUNT=1; $env:GIT_CONFIG_KEY_0="core.autocrlf"; $env:GIT_CONFIG_
 
 If it still fails, the component manager's cache holds a CRLF checkout from an
 earlier fetch; clear it too.
+
+Native Linux setup and isolated C2/C3 builds are documented in
+[Native ESP-IDF development](docs/NATIVE_IDF.md), including the
+[four-configuration compatibility matrix](docs/validation/2026-11-18-native-idf.md).
 
 ## Control token
 
