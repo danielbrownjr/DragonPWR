@@ -188,3 +188,27 @@ FreeRTOS semaphore and timer stubs, injecting lock timeouts for each exposed
 service operation and for deadline polling. Default V2 output switching is
 still inactive; no GPIO driver is registered, no reboot escalation is added,
 and no physical contact behavior is asserted.
+
+## Proposed PR #47: minimal laboratory ON/OFF button (NOT released)
+
+This is the smallest viable integration of the existing software model,
+independent poll task and GPIO7 adapter. Only the separately selected
+`CONFIG_DP_V2_GPIO7_EXPERIMENT=y` image compiles the new
+`POST /api/v2/experimental/power` endpoint. It demands a configured control
+token and the existing human-monitor acknowledgment header. The
+`/power` page shows a separate experimental button, which never claims
+actual outlet readback. The normal C3 image still has **no** active output
+capability and its standard routes remain disabled. V1 is unchanged.
+
+ON is explicitly requested with a finite 100–300,000 ms duration; automatic
+deadline polling requests GPIO7 input release, and manual OFF is available
+after software FAULT. ON does not persist across reboot, and repeated ON
+does not extend a running deadline. No automatic reboot, stored restore ON,
+USB power control or printer policy is introduced. The human-monitored bench
+configuration needs an independent upstream disconnect.
+
+**This is an unmerged implementation candidate**, not proof of safe reset,
+contact state or reliable mains switching. The preexisting F4 provisioning
+reboot bypass, F5 centralized GPIO ownership, F6 atomic maintenance and
+physical reset/output qualification remain unresolved before normal
+production control. The opt-in lab image is not for an unattended printer.
