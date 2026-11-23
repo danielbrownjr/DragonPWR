@@ -119,8 +119,9 @@ int main(void) {
     assert(s_lab_active && give_calls == before_give);
     assert(last_wait_ticks == 6); // 50 ms plus one tick at mock 100 Hz
 
+    const int before_scheduler_logs = error_logs;
     run_polls(2); // consecutive scheduler lock failures log only once
-    assert(error_logs == 1);
+    assert(error_logs == before_scheduler_logs + 1);
     assert(s_lab_active);
     deny_lock = 0;
     dp_v2_pwr_service_lab_end();
