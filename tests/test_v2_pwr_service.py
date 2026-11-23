@@ -18,8 +18,8 @@ typedef int esp_err_t;
 int64_t esp_timer_get_time(void);
 """,
     "esp_log.h": """#pragma once
-#define ESP_LOGE(tag, ...) (++error_logs)
-#define ESP_LOGI(tag, ...) ((void)0)
+#define ESP_LOGE(tag, ...) ((void)(tag), ++error_logs)
+#define ESP_LOGI(tag, ...) ((void)(tag))
 """,
     "freertos/FreeRTOS.h": """#pragma once
 #define pdTRUE 1
