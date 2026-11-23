@@ -21,22 +21,25 @@ silently extend an existing deadline. OFF is idempotent, driver errors latch
 FAULT, and expiry requests OFF when polled. The model records software state,
 **never** physical AC contact state.
 
-## Historical PWR-001 acceptance notes and remaining activation gates
+## PWR-001 acceptance and remaining gates
 
-1. The model FAULT-latch finding was fixed and independently re-reviewed before
-   PR #43 merged. Continue to test service-level failure injection before
-   enabling its driver.
-2. The nonblocking C3 scheduler is present; review its task lifetime and
-   mutex serialization. Connect commands to the existing authenticated API
-   only after driver and policy gates are reviewed.
-3. Audit OFF handling on driver errors, maintenance, and startup; define an
-   explicit opt-in production driver with hardware gating and runtime authorization.
-4. Keep the normal C3 build inactive, preserving C2 behavior and maintenance guards.
-5. Source-executing model and GPIO7 experiment host tests, C2/C3/lab builds and
-   independent review passed for merged PR #43. Service-level host execution
-   remains a nonblocking testing gap for this software-only foundation.
-6. Characterize MCU reset during HIGH with external capture when available.
-   Do not assert physical OFF from software intent or GPIO input mode.
+- **Done in PR #43:** The model's FAULT-latch defect (F1) was fixed and
+  independently re-reviewed; source-executing model tests and GPIO7
+  experimental host tests, plus C2/C3/lab builds, passed.
+- **Done in PR #43:** The new host workflow's unpinned checkout/Node.js 20
+  deprecation finding (F2) was resolved by using the repository-pinned
+  checkout v5 action and correcting workflow path filters.
+- **Done in PR #43:** The serialized C3 model-polling service is present.
+  Its independent task timing and mutex design were reviewed for this
+  **non-actuating** milestone, not qualified as an electrical watchdog.
+- **Standing constraint:** Keep the default C3 build inactive and retain
+  existing C2 behavior; no normal C3 output-control capability is advertised.
+- **Before driver activation:** Add source-executing service and failure
+  injection tests, address OFF errors and runtime authorization, and finish
+  the activation blockers listed below.
+- **Physical qualification still required:** Characterize reset during GPIO7
+  HIGH and actual contact behavior. Software OFF and input mode do not prove
+  physical mains-off state.
 
 Host-only check:
 
@@ -112,6 +115,8 @@ source tree remained identical to the accepted feature head through rebase.
 Merging code is **not** evidence that an experimental image was installed,
 that a hardware test occurred, or that GPIO7 is safe for unattended operation.
 
+Finding IDs F1–F9 refer to the independent review of PR #43; F1 (FAULT
+latch) and F2 (checkout pin/Node.js 20 warning) were closed before merge.
 The following findings remain **blocking for future GPIO7 service-driver
 registration**, not for the merged non-actuating foundation:
 
