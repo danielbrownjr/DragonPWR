@@ -26,8 +26,8 @@ Dragon-family status dashboard with common setup/recovery interfaces.
 
 ## Hardware
 
-The hardware and recovery commands in this section describe the original
-**ESP32-C2 V1**. Do not reuse its pin map, flash layout, commands or polarity
+The hardware details and commands in this and the following install, backup,
+build and recovery sections describe the original **ESP32-C2 V1**. Do not reuse its pin map, flash layout, commands or polarity
 assumptions on ESP32-C3 V2; see [V2 safe boot and recovery](docs/V2_SAFE_BOOT_RECOVERY.md).
 
 | | |
