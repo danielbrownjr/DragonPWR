@@ -6,10 +6,13 @@ Open firmware for the [BIGTREETECH Panda PWR](https://github.com/bigtreetech/Pan
 built on the shared [`dragon-core`](https://github.com/justinh-rahb/dragon-core)
 networking and printer-integration components.
 
-**Status: Phase 1 is bench-verified on a real unit.** The relay, USB1, the Bind
-button, the web UI, the control token and OTA from the browser all work. There
-is no metering and no printer integration yet - see the
-[roadmap](docs/ROADMAP.md).
+**Status:** The original ESP32-C2 (Panda PWR V1) has a bench-verified Phase 1
+baseline: relay, USB1, Bind button, web UI, control token and browser OTA.
+The separate **ESP32-C3 Panda PWR V2** has a software-only power-control model
+and an opt-in, human-monitored GPIO7 pulse experiment. Normal V2 outlet/USB
+switching remains **disabled and electrically unqualified**. Neither version
+has live metering or printer integration. See the [V1 roadmap](docs/ROADMAP.md)
+and [V2 power integration status](docs/V2_PWR_INTEGRATION.md).
 
 The pin map was reverse-engineered from BIGTREETECH's stock images. The outputs
 and the button are confirmed on a board. The metering IC is physically confirmed
@@ -17,11 +20,15 @@ as an HLW8112 from a teardown; GPIO6 is still physically unidentified.
 Read [docs/HARDWARE_ANALYSIS.md](docs/HARDWARE_ANALYSIS.md) before you wire
 anything to mains.
 
-Once installed, the outlet is switched from `http://<device>/power`. The
-device's main page is the shared Dragon-family UI with a dedicated DragonPWR
-power-and-health dashboard and common setup/recovery interface.
+On V1, the outlet is switched from `http://<device>/power`. On V2 that
+page does **not** enable outlet switching. The main page is the shared
+Dragon-family status dashboard with common setup/recovery interfaces.
 
 ## Hardware
+
+The hardware details and commands in this and the following install, backup,
+build and recovery sections describe the original **ESP32-C2 V1**. Do not reuse its pin map, flash layout, commands or polarity
+assumptions on ESP32-C3 V2; see [V2 safe boot and recovery](docs/V2_SAFE_BOOT_RECOVERY.md).
 
 | | |
 |---|---|
@@ -158,7 +165,7 @@ stay readable. Clear it by posting `{"token":""}` with the current token.
 |---|---|
 | `main/` | `app_main` — brings the outputs up, then hands off to dragon-core |
 | `components/dp_board/` | The pin map, and the only place polarity is written down |
-| `components/dp_relay/` | Mains + USB1 outputs, safe boot state, restore policy |
+| `components/dp_relay/` | V1 mains/USB1 switching and restore; V2 inactive driver, software power model, timer service and unregistered lab-only GPIO7 candidate |
 | `components/dp_portal/` | Product API v2, stock-compatible routes, safety guards |
 | `analysis/` | Static-analysis tooling for the stock firmware, and the backup verifier |
 
@@ -167,7 +174,8 @@ stay readable. Clear it by posting `{"token":""}` with the current token.
 Start at the [documentation index](docs/INDEX.md).
 
 - [Installation & Recovery](docs/INSTALLATION_AND_RECOVERY.md) — first install, stock backup/restore, OTA and rollback
-- [Architecture](docs/ARCHITECTURE.md) — boot order, component ownership and safety boundaries
+- [Architecture](docs/ARCHITECTURE.md) — target-specific boot order, component ownership and safety boundaries
+- [V2 PWR integration](docs/V2_PWR_INTEGRATION.md) — merged #42/#43 software foundation, safety limits and remaining activation gates
 - [API](docs/API.md) — DragonPWR product routes, authentication and stock compatibility
 - [Roadmap](docs/ROADMAP.md) — phases, the flash budget, and what is deliberately out of scope
 - [Hardware Analysis](docs/HARDWARE_ANALYSIS.md) — pin map recovery, teardown evidence and open questions

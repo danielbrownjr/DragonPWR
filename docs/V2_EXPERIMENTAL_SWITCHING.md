@@ -1,6 +1,15 @@
 # DragonPWR V2 experimental GPIO7 pulse firmware
 
-**Status:** draft, source-review-only candidate for [issue #18](https://github.com/danielbrownjr/DragonPWR/issues/18). This combines the previously separated Stage A/B into one **opt-in, reviewable, GPIO7-driving laboratory firmware candidate**, as requested by Dan on 2026-11-21. It is not an electrical qualification, production release, or evidence of a successful flash or energized test.
+**Status:** the opt-in GPIO7 laboratory firmware was merged in
+[PR #42](https://github.com/danielbrownjr/DragonPWR/pull/42) at
+`cc5fc96ba3af5824ea1c50f79c7dc7fc4b8b5e30`. It combines the
+previously separated Stage A/B experiment for
+[issue #18](https://github.com/danielbrownjr/DragonPWR/issues/18).
+Subsequent [PR #43](https://github.com/danielbrownjr/DragonPWR/pull/43)
+added an exclusive software GPIO7 lab lease, but **did not connect a normal
+power driver**. Merge acceptance is not electrical qualification or a
+production release. See [V2 PWR integration](V2_PWR_INTEGRATION.md) for the
+current software and hardware acceptance boundaries.
 
 ## Why GPIO7?
 
@@ -26,7 +35,11 @@ Dan reported approximately **240 V AC at the receptacle on initial application o
 4. The **separately authorized human-monitored test** uses the sealed device and external mains-rated DVM/test fixture. Arrange an operator-controlled upstream mains disconnect (appropriately rated, protected switch or switched supply) within reach and independent of GPIO7, Wi-Fi, and the firmware. Record outlet state **before the first pulse** and between pulses. Record idle AC voltage, the precise pulse time and level, outlet response and recovery after the pulse. A DVM may miss subsecond events; a voltage reading is not evidence of safe contact or protection behavior. Treat high-impedance release as **unknown outlet state**, and rely on the upstream disconnect if the outlet remains energized.
 5. Stop on unexpected switch state, reset, GPIO ownership conflict, loss of network/ROM access, inability to recover, or a fixture problem. There is no assumption that input mode equals relay OFF.
 
-**Not done in this PR:** hardware flash, test on mains, publication of firmware release/tag, stock restore, physical GPIO/relay polarity qualification, or certification. No activity on the user's device has occurred.
+**Merge scope:** PR #42 did not itself perform a flash, energized test,
+firmware release/tag or stock restore. Separately recorded operator bench
+observations of unloaded outlet voltage exist, but do not qualify physical
+contact closure, loaded switching, reset behavior or certification. This
+source document does not authorize hardware operations.
 
 ## Important caveat: experimental by design
 

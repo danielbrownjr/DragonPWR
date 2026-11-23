@@ -6,7 +6,8 @@ not the generated wiki copies.
 
 ## Current product status
 
-DragonPWR is at a bench-verified Phase 1 baseline on real Panda PWR hardware:
+DragonPWR has a bench-verified Phase 1 baseline on original Panda PWR **V1
+(ESP32-C2)** hardware:
 
 - ESP8684 / ESP32-C2 target boots and provisions through dragon-core.
 - Mains relay and USB1 switching are verified.
@@ -17,6 +18,13 @@ DragonPWR is at a bench-verified Phase 1 baseline on real Panda PWR hardware:
 - The HLW8112 metering hardware and stock metering algorithm are recovered, but
   `dp_meter` is not implemented yet.
 - Printer integration and the print-aware power interlock are not implemented yet.
+
+On **V2 (ESP32-C3)**, merged [#42](https://github.com/danielbrownjr/DragonPWR/pull/42)
+and [#43](https://github.com/danielbrownjr/DragonPWR/pull/43) provide an opt-in
+laboratory GPIO7 pulse path, a non-actuating software power model/service,
+software-only status and maintenance coordination. **Normal V2 power switching
+is disabled; physical relay/contact state and reset-under-HIGH behavior remain
+unverified.** No production activation or electrical qualification is implied.
 
 Open hardware questions remain intentionally recorded. They are not documentation
 gaps: where a component or trace is unverified, the docs say so.
@@ -35,6 +43,9 @@ gaps: where a component or trace is unverified, the docs say so.
 | Follow real bench evidence chronologically | [Bench Notes](BENCH_NOTES.md) |
 | See V1 planned work and deliberate non-goals | [V1 roadmap](ROADMAP.md) |
 | Follow the separate provisional V2 planning track | [V2 roadmap](V2_ROADMAP.md) |
+| Understand merged V2 power-control software and outstanding gates | [V2 PWR integration](V2_PWR_INTEGRATION.md) |
+| Understand the manual opt-in GPIO7 lab experiment | [V2 experimental switching](V2_EXPERIMENTAL_SWITCHING.md) |
+| Evaluate V2 startup, reset and restore safety questions | [V2 safe boot and recovery](V2_SAFE_BOOT_RECOVERY.md) |
 | Reproduce stock-firmware analysis | [analysis/README.md](../analysis/README.md) |
 | Maintain the GitHub Wiki mirror | [Wiki publishing](WIKI.md) |
 | Cut and package firmware releases | [Releasing](RELEASING.md) |
