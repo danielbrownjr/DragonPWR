@@ -1,0 +1,43 @@
+name: V2 PWR model host tests
+
+on:
+  pull_request:
+    paths:
+      - 'components/dp_relay/**'
+      - 'components/dp_portal/dp_portal.c'
+      - 'main/app_main.c'
+      - 'scripts/test_v2_gpio7_experiment.py'
+      - 'tests/test_v2_pwr_model.c'
+      - 'tests/check_v2_pwr_integration.py'
+      - '.github/workflows/v2-pwr-model.yml'
+  push:
+    paths:
+      - 'components/dp_relay/**'
+      - 'components/dp_portal/dp_portal.c'
+      - 'main/app_main.c'
+      - 'scripts/test_v2_gpio7_experiment.py'
+      - 'tests/test_v2_pwr_model.c'
+      - 'tests/check_v2_pwr_integration.py'
+      - '.github/workflows/v2-pwr-model.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-model:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Compile and execute V2 command-model test
+        run: |
+          set -eu
+          cc -std=c11 -Wall -Wextra -Werror -pedantic \
+            -fsanitize=address,undefined -fno-omit-frame-pointer \
+            -I components/dp_relay/include \
+            components/dp_relay/dp_v2_pwr_model.c \
+            tests/test_v2_pwr_model.c \
+            -o /tmp/test_v2_pwr_model
+          /tmp/test_v2_pwr_model
+      - name: Verify inactive C3 PWR wiring
+        run: python3 tests/check_v2_pwr_integration.py

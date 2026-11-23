@@ -7,6 +7,7 @@
 #endif
 
 #include "dp_v2_experiment.h"
+#include "dp_v2_pwr_service.h"
 #include "dp_board.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
@@ -24,6 +25,10 @@ esp_err_t dp_v2_experiment_gpio7_pulse(int level, uint32_t milliseconds)
         return ESP_ERR_INVALID_ARG;
     }
 
+    // Atomic lease excludes concurrent model control and maintenance while
+    // the experimental callback owns the GPIO7 pad.
+    if (!dp_v2_pwr_service_lab_begin()) return ESP_ERR_INVALID_STATE;
+
     // There is intentionally no assumed inactive level. Only drive after an
     // explicit operator request; on completion relinquish pin ownership.
     // High impedance does NOT imply the outlet is off.
@@ -34,6 +39,7 @@ esp_err_t dp_v2_experiment_gpio7_pulse(int level, uint32_t milliseconds)
     gpio_dump_io_configuration(stdout, 1ULL << DP_V2_PIN_AC_COMMAND);
     esp_err_t err = gpio_set_level(DP_V2_PIN_AC_COMMAND, level);
     if (err != ESP_OK) {
+        dp_v2_pwr_service_lab_end();
         return err;
     }
     // Diagnostics before output enable avoid extending the drive window with
@@ -45,6 +51,7 @@ esp_err_t dp_v2_experiment_gpio7_pulse(int level, uint32_t milliseconds)
     err = gpio_set_direction(DP_V2_PIN_AC_COMMAND, GPIO_MODE_OUTPUT);
     if (err != ESP_OK) {
         (void)gpio_set_direction(DP_V2_PIN_AC_COMMAND, GPIO_MODE_INPUT);
+        dp_v2_pwr_service_lab_end();
         return err;
     }
     vTaskDelay(pdMS_TO_TICKS(milliseconds) + 1);
@@ -57,5 +64,6 @@ esp_err_t dp_v2_experiment_gpio7_pulse(int level, uint32_t milliseconds)
     }
     gpio_dump_io_configuration(stdout, 1ULL << DP_V2_PIN_AC_COMMAND);
     ESP_LOGW(TAG, "EXPERIMENT: GPIO7 released to input; AC state UNKNOWN");
+    dp_v2_pwr_service_lab_end();
     return ESP_OK;
 }

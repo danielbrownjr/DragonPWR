@@ -12,6 +12,9 @@
 #include "dp_button.h"
 #include "dp_portal.h"
 #include "dp_relay.h"
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+#include "dp_v2_pwr_service.h"
+#endif
 #include "driver/uart.h"
 #include "esp_err.h"
 #include "esp_heap_caps.h"
@@ -158,6 +161,10 @@ void app_main(void)
     // as short as the firmware can make it, and nothing above depends on the
     // network being up.
     ESP_ERROR_CHECK(dp_relay_init());
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+    // Software scheduler only. Disabled by default, no GPIO output driver.
+    ESP_ERROR_CHECK(dp_v2_pwr_service_start());
+#endif
     ESP_ERROR_CHECK(dp_button_init());
 
     ESP_ERROR_CHECK(configure_network_identity());
