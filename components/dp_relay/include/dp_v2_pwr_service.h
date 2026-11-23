@@ -25,3 +25,10 @@ bool dp_v2_pwr_service_lab_active(void);
 #ifdef __cplusplus
 }
 #endif
+
+#if defined(CONFIG_IDF_TARGET_ESP32C3) && defined(CONFIG_DP_V2_GPIO7_EXPERIMENT)
+// Explicitly requested laboratory power command, never called at boot.
+// ON is duration-bounded and cannot automatically extend; OFF releases the
+// GPIO7 pad. This reports software commands, NOT physical contact feedback.
+dp_v2_pwr_result_t dp_v2_pwr_service_lab_command(bool on, uint32_t duration_ms);
+#endif
