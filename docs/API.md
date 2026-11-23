@@ -90,6 +90,9 @@ model snapshot. It is **software intent**, not measured GPIO drive, contact
 position or AC voltage. `lab_gpio7_active` reflects a RAM lease, not a
 reliable live pulse monitor: the experimental pulse runs on the HTTP worker, so
 a simultaneous HTTP state request cannot normally observe the lease held.
+When the PWR service is unavailable, the lease helper conservatively reports
+`true`; together with `requested_state: "unavailable"`, this means unknown
+service state rather than proof of an active lease.
 Neither target reports physical contact or voltage through these fields.
 
 Heap values are bytes. `meter` and `printer` are deliberately `null` until
@@ -106,13 +109,20 @@ Returns the current RAM event-log snapshot:
 
 ### `GET /power`
 
-Permanent DragonPWR-owned control and recovery page, complementary to the shared
-read-only dashboard at `/`. The page is publicly readable, but output commands,
-Restart and Boot inactive slot use authenticated firmware routes. Recovery buttons use boot identities and the applicable maintenance gate.
-The V1 gate uses driver-reported mains state. The V2 gate checks software model
-status and the experimental GPIO7 lease; it does not establish an observed
-physical mains-off state. The firmware independently enforces authorization and
-the product maintenance gate.
+Permanent DragonPWR-owned control and recovery page, complementary to the
+shared read-only dashboard at `/`. The page is publicly readable, but output
+commands, Restart and Boot inactive slot use authenticated firmware routes.
+
+On `/power`, the Restart and Boot inactive slot buttons require matching boot
+identities, `outputs.mains === false`, and the `power_switch` capability.
+They therefore remain **disabled on V2**, where mains state is `null` and
+`power_switch` is absent. An unknown output state is not permission to
+reboot through the UI.
+
+The firmware routes separately enforce authorization and target-specific
+maintenance guards: V1 checks driver-reported mains state, while V2 checks
+PWR model state and the GPIO7 lab lease. Neither check establishes physical
+mains-off state.
 
 ## Mutation routes
 
@@ -188,11 +198,12 @@ states on V1 and `null` on V2:
 The recovered stock metering field semantics are documented in
 [Metering Reverse Engineering](METERING_REVERSE_ENGINEERING.md).
 
+## Experimental routes (C3 lab builds only)
+
 ### `POST /api/v2/experimental/gpio7` (C3 lab builds only)
 
 Only compiled with `CONFIG_DP_V2_GPIO7_EXPERIMENT=y`. Requires an actually
-configured control token (not presence-only auth), the matching
-`X-Dragon-Auth` header and `X-Dragon-Lab-Confirm: GPIO7-HUMAN-MONITORED`.
+configured control token (not presence-only auth), a matching `X-Dragon-Auth` or `X-DragonBreath-Auth` header and `X-Dragon-Lab-Confirm: GPIO7-HUMAN-MONITORED`.
 The JSON body is `{"level":1,"duration_ms":250}`, accepting integer level
 0 or 1 and durations from 100 through 2000 ms. An exclusive software lease
 blocks overlapping lab ownership. The response reports the commanded level
