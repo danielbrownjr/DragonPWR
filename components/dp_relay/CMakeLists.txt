@@ -1,7 +1,7 @@
 if(IDF_TARGET STREQUAL "esp32c3")
-    set(DP_RELAY_SOURCE "dp_relay_v2_inactive.c")
+    set(DP_RELAY_SOURCE "dp_relay_v2_inactive.c" "dp_v2_pwr_model.c" "dp_v2_pwr_service.c")
     if(CONFIG_DP_V2_GPIO7_EXPERIMENT)
-        list(APPEND DP_RELAY_SOURCE "dp_v2_gpio7_experiment.c")
+        list(APPEND DP_RELAY_SOURCE "dp_v2_gpio7_experiment.c" "dp_v2_gpio7_driver.c")
     endif()
 else()
     set(DP_RELAY_SOURCE "dp_relay.c")
@@ -10,5 +10,5 @@ idf_component_register(
     SRCS ${DP_RELAY_SOURCE}
     INCLUDE_DIRS "include"
     REQUIRES dp_board esp_driver_gpio nvs_flash
-    PRIV_REQUIRES freertos
+    PRIV_REQUIRES freertos esp_timer
 )

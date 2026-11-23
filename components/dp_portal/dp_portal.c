@@ -12,6 +12,9 @@
 #include "dc_portal.h"
 #include "dc_wifi.h"
 #include "dp_relay.h"
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+#include "dp_v2_pwr_service.h"
+#endif
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -318,6 +321,20 @@ static esp_err_t state_get(httpd_req_t *req)
     cJSON_AddNullToObject(outputs, "mains");
     cJSON_AddNullToObject(outputs, "usb1");
     cJSON_AddNullToObject(root, "restore");
+    // Software command scheduler status, NOT physical AC/output feedback.
+    dp_v2_pwr_model_t pwr_snapshot;
+    cJSON *pwr = cJSON_AddObjectToObject(root, "pwr_control");
+    if (dp_v2_pwr_service_snapshot(&pwr_snapshot) == DP_V2_PWR_OK) {
+        cJSON_AddBoolToObject(pwr, "enabled", pwr_snapshot.enabled);
+        cJSON_AddStringToObject(pwr, "requested_state",
+                                pwr_snapshot.phase == DP_V2_PWR_FAULT ? "fault" :
+                                pwr_snapshot.phase == DP_V2_PWR_ON ? "on" : "off");
+    } else {
+        cJSON_AddBoolToObject(pwr, "enabled", false);
+        cJSON_AddStringToObject(pwr, "requested_state", "unavailable");
+    }
+    cJSON_AddBoolToObject(pwr, "lab_gpio7_active", dp_v2_pwr_service_lab_active());
+    cJSON_AddNullToObject(pwr, "physical_ac_state");
 #else
     cJSON_AddBoolToObject(outputs, "mains", dp_relay_get(DP_OUTPUT_MAINS));
     cJSON_AddBoolToObject(outputs, "usb1", dp_relay_get(DP_OUTPUT_USB1));
@@ -646,12 +663,24 @@ static esp_err_t apply_product(const cJSON *values, void *ctx,
 static esp_err_t refuse_reboot_if_on(const char *what, char *message,
                                      size_t message_size)
 {
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+    // C3 dp_relay_get() is an inactive placeholder, never an outlet readback.
+    // Block during experimental GPIO ownership and whenever model status is
+    // active, faulted, enabled, or unreadable.
+    if (!dp_v2_pwr_service_maintenance_allowed()) {
+        snprintf(message, message_size,
+                 "V2 power control is active, faulted, or unavailable: cannot %s",
+                 what);
+        return ESP_ERR_INVALID_STATE;
+    }
+#else
     if (dp_relay_get(DP_OUTPUT_MAINS)) {
         snprintf(message, message_size,
                  "Switch the outlet off first: %s reboots the device, which drops "
                  "the relay and cuts power to whatever is plugged in.", what);
         return ESP_ERR_INVALID_STATE;
     }
+#endif
     return ESP_OK;
 }
 

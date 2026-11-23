@@ -32,6 +32,7 @@ with tempfile.TemporaryDirectory(prefix="dragonpwr-gpio7-test-") as directory:
 typedef int esp_err_t;
 #define ESP_OK 0
 #define ESP_ERR_INVALID_ARG 0x102
+#define ESP_ERR_INVALID_STATE 0x103
 """)
     (tmp / "dp_board.h").write_text("""#define DP_V2_PIN_AC_COMMAND 7
 """)
@@ -56,11 +57,25 @@ int gpio_set_direction(int pin, int direction);
     (tmp / "test.c").write_text("""
 #include <assert.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include "sdkconfig.h"
 #include "driver/gpio.h"
 #include "dp_v2_experiment.h"
 static int stage;
 static int dumps;
+static int leases_started, leases_ended;
+static int allow_lease = 1;
+static int fail_level, fail_enable;
+bool dp_v2_pwr_service_lab_begin(void) {
+    if (!allow_lease) return false;
+    assert(stage == 0 && dumps == 0);
+    ++leases_started;
+    return true;
+}
+void dp_v2_pwr_service_lab_end(void) {
+    assert(stage == 5 || (stage == 2 && fail_level));
+    ++leases_ended;
+}
 void gpio_dump_io_configuration(void *stream, unsigned long long mask) {
     (void)stream;
     assert(mask == (1ULL << 7));
@@ -81,7 +96,7 @@ int gpio_set_level(int pin, int level) {
     assert(pin == 7 && stage == 1 && dumps == 2);
     last_level = level;
     stage = 2;
-    return 0;
+    return fail_level ? 0x105 : 0;
 }
 int gpio_set_direction(int pin, int direction) {
     assert(pin == 7);
@@ -89,8 +104,9 @@ int gpio_set_direction(int pin, int direction) {
         assert(dumps == 3);
         assert(direction == GPIO_MODE_OUTPUT);
         stage = 3;
+        if (fail_enable) return 0x105;
     } else {
-        assert(stage == 4 && direction == GPIO_MODE_INPUT);
+        assert((stage == 4 || (stage == 3 && fail_enable)) && direction == GPIO_MODE_INPUT);
         stage = 5;
     }
     return 0;
@@ -105,13 +121,25 @@ int main(void) {
     assert(dp_v2_experiment_gpio7_pulse(2, 100) != 0);
     assert(dp_v2_experiment_gpio7_pulse(0, 99) != 0);
     assert(dp_v2_experiment_gpio7_pulse(1, 2001) != 0);
-    assert(stage == 0);
+    assert(stage == 0 && leases_started == 0);
+    allow_lease = 0;
+    assert(dp_v2_experiment_gpio7_pulse(1, 250) == ESP_ERR_INVALID_STATE);
+    assert(stage == 0 && leases_started == 0);
+    allow_lease = 1;
     assert(dp_v2_experiment_gpio7_pulse(1, 250) == 0);
     assert(stage == 5 && last_level == 1 && delay_ticks >= 250 && dumps == 4);
+    assert(leases_started == 1 && leases_ended == 1);
     stage = 0;
     dumps = 0;
     assert(dp_v2_experiment_gpio7_pulse(0, 100) == 0);
     assert(stage == 5 && last_level == 0 && dumps == 4);
+    assert(leases_started == 2 && leases_ended == 2);
+    stage = 0; dumps = 0; fail_level = 1;
+    assert(dp_v2_experiment_gpio7_pulse(1, 150) != 0);
+    assert(stage == 2 && leases_started == 3 && leases_ended == 3);
+    stage = 0; dumps = 0; fail_level = 0; fail_enable = 1;
+    assert(dp_v2_experiment_gpio7_pulse(1, 150) != 0);
+    assert(stage == 5 && leases_started == 4 && leases_ended == 4);
 }
 """)
     cmd = [
