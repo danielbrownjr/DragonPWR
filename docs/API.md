@@ -67,8 +67,30 @@ Current Phase 1 state:
 ```
 
 The example shows V1 controller state. On V2, `outputs.mains`, `outputs.usb1`,
-and `restore` are `null` because output control and restore are unavailable.
-Neither target reports a physical contact or voltage measurement through these fields.
+and `restore` are `null` because normal output control and restore are
+unavailable. V2 additionally reports a software-only control snapshot, for
+example:
+
+```json
+{
+  "outputs": {"mains": null, "usb1": null},
+  "restore": null,
+  "pwr_control": {
+    "enabled": false,
+    "requested_state": "off",
+    "lab_gpio7_active": false,
+    "physical_ac_state": null
+  }
+}
+```
+
+This is a **partial example**, not the entire state response. The V2
+`requested_state` is `off`, `on`, `fault` or `unavailable` depending on the
+model snapshot. It is **software intent**, not measured GPIO drive, contact
+position or AC voltage. `lab_gpio7_active` reflects a RAM lease, not a
+reliable live pulse monitor: the experimental pulse runs on the HTTP worker, so
+a simultaneous HTTP state request cannot normally observe the lease held.
+Neither target reports physical contact or voltage through these fields.
 
 Heap values are bytes. `meter` and `printer` are deliberately `null` until
 those features exist so clients can distinguish "not implemented" from a real
@@ -86,10 +108,11 @@ Returns the current RAM event-log snapshot:
 
 Permanent DragonPWR-owned control and recovery page, complementary to the shared
 read-only dashboard at `/`. The page is publicly readable, but output commands,
-Restart and Boot inactive slot use authenticated firmware routes. Recovery buttons
-require matching boot identities and an observed mains-off state; an unknown state
-(including V2) is not permission to reboot. The firmware independently enforces
-authorization and the maintenance safety guard.
+Restart and Boot inactive slot use authenticated firmware routes. Recovery buttons use boot identities and the applicable maintenance gate.
+The V1 gate uses driver-reported mains state. The V2 gate checks software model
+status and the experimental GPIO7 lease; it does not establish an observed
+physical mains-off state. The firmware independently enforces authorization and
+the product maintenance gate.
 
 ## Mutation routes
 
@@ -104,8 +127,9 @@ Body:
 `output` is `mains` or `usb1`. On success the response is the same shape as
 `GET /api/v2/state`.
 
-**Current limitation:** the Phase 2 printer-state power-off interlock is not
-implemented yet.
+On V2, this route still refuses output switching through the inactive relay
+backend. It does not expose the PWR model's ON operation. **Current limitation:**
+the Phase 2 printer-state power-off interlock is not implemented yet.
 
 ### `POST /api/v2/token`
 
@@ -114,18 +138,20 @@ clears the token.
 
 ### `POST /api/v2/restart`
 
-Authenticated. Refused with HTTP 409 while the mains outlet is on.
+Authenticated. On V1 refused with HTTP 409 when the relay driver reports mains
+ON. On V2 refused when the PWR service is enabled, active, faulted, holding a
+GPIO7 lab lease, or unavailable; this is not a physical-contact measurement.
 
 ### `POST /api/v2/factory-reset?confirm=factory-reset`
 
-Authenticated, requires the exact confirmation query parameter, and is refused
-while mains is on. Clears DragonPWR product settings/token and Wi-Fi credentials,
+Authenticated, requires the exact confirmation query parameter, and uses the
+same target-specific maintenance guard described for restart. Clears DragonPWR product settings/token and Wi-Fi credentials,
 then restarts.
 
 ### `POST /api/v2/boot-inactive`
 
-Authenticated and refused while mains is on. Verifies the other OTA slot before
-selecting it.
+Authenticated and subject to the same target-specific maintenance guard.
+Verifies the other OTA slot before selecting it.
 
 ## Stock-compatible routes
 
@@ -161,3 +187,15 @@ states on V1 and `null` on V2:
 
 The recovered stock metering field semantics are documented in
 [Metering Reverse Engineering](METERING_REVERSE_ENGINEERING.md).
+
+### `POST /api/v2/experimental/gpio7` (C3 lab builds only)
+
+Only compiled with `CONFIG_DP_V2_GPIO7_EXPERIMENT=y`. Requires an actually
+configured control token (not presence-only auth), the matching
+`X-Dragon-Auth` header and `X-Dragon-Lab-Confirm: GPIO7-HUMAN-MONITORED`.
+The JSON body is `{"level":1,"duration_ms":250}`, accepting integer level
+0 or 1 and durations from 100 through 2000 ms. An exclusive software lease
+blocks overlapping lab ownership. The response reports the commanded level
+and duration but `physical_ac_state: null`. This route is **not** a production
+power API or proof of safe reset/output isolation. See
+[V2 experimental switching](V2_EXPERIMENTAL_SWITCHING.md).
