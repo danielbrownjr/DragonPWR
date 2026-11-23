@@ -5,6 +5,9 @@
 #error "V2 PWR service must only compile for ESP32-C3"
 #endif
 #include "dp_v2_pwr_service.h"
+#if defined(CONFIG_DP_V2_GPIO7_EXPERIMENT)
+#include "dp_v2_gpio7_driver.h"
+#endif
 #include "esp_timer.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -142,3 +145,40 @@ bool dp_v2_pwr_service_maintenance_allowed(void)
     xSemaphoreGive(s_lock);
     return allowed;
 }
+
+#if defined(CONFIG_DP_V2_GPIO7_EXPERIMENT)
+// The existing opt-in lab image is the only build with the GPIO7 adapter.
+// This command is never invoked during startup or by normal /set routes.
+// A finite 5-minute ceiling ensures no indefinite software ON request.
+#define DP_V2_PWR_LAB_MAX_ON_MS 300000U
+
+dp_v2_pwr_result_t dp_v2_pwr_service_lab_command(bool on, uint32_t duration_ms)
+{
+    if (!s_started || !s_lock) return DP_V2_PWR_UNAVAILABLE;
+    if (on && (duration_ms == 0 || duration_ms > DP_V2_PWR_LAB_MAX_ON_MS)) {
+        return DP_V2_PWR_INVALID;
+    }
+    if (!lock_service()) return DP_V2_PWR_UNAVAILABLE;
+    dp_v2_pwr_result_t result = DP_V2_PWR_UNAVAILABLE;
+    if (!s_lab_active) {
+        if (!on) {
+            // OFF is explicitly available even after FAULT or expiry.
+            result = dp_v2_pwr_model_disable(&s_model);
+        } else {
+            if (!s_model.enabled && s_model.phase == DP_V2_PWR_OFF) {
+                result = dp_v2_pwr_model_enable(&s_model, dp_v2_gpio7_drive,
+                                                NULL, DP_V2_PWR_LAB_MAX_ON_MS);
+            } else if (s_model.enabled) {
+                result = DP_V2_PWR_OK;
+            } else {
+                result = DP_V2_PWR_DRIVER_ERROR;
+            }
+            if (result == DP_V2_PWR_OK) {
+                result = dp_v2_pwr_model_set(&s_model, true, clock_ms(), duration_ms);
+            }
+        }
+    }
+    xSemaphoreGive(s_lock);
+    return result;
+}
+#endif
