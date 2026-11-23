@@ -130,8 +130,13 @@ registration**, not for the merged non-actuating foundation:
 - **F5:** Driver ownership must be enforced centrally for *all* driver calls,
   not only the existing experimental endpoint lease.
 - **F6:** Maintenance needs an atomic hold against new output commands.
-- **F9:** Service/guard lock acquisition needs bounded waits and fail-closed
-  handling. Source-executing service tests are also outstanding.
+- **F9 (addressed in proposed PR #46):** Service and guard mutex acquisition
+  now waits at most 50 ms plus one FreeRTOS tick. Busy/unavailable callers
+  fail closed, including the lease-release path; a missed monitor poll is
+  logged but does not claim physical OFF. The service is exercised with
+  host RTOS contention stubs. This addresses indefinite lock acquisition
+  and the prior service-execution test gap, **not** a hung driver callback,
+  deadline lateness or a physical fail-off guarantee.
 
 The lab-lease field's limited HTTP observability (F8) is documented above.
 Physical reset behavior while GPIO7 is HIGH, contact topology, leakage versus
@@ -160,3 +165,26 @@ The original F3 finding is therefore **partially mitigated**, not closed for
 hardware activation. F4–F6, F9 and independent contact/reset evidence remain
 prerequisites. Host regression tests exercise failed and successful OFF
 retries, budget exhaustion, manual recovery and initial-enable errors.
+
+## PR #46: bounded V2 service locking (software-only)
+
+Every `dp_v2_pwr_service` mutex request now uses a bounded FreeRTOS wait
+(`pdMS_TO_TICKS(50) + 1` ticks), rather than `portMAX_DELAY`. The extra tick
+avoids a zero-tick acquisition on coarser FreeRTOS configurations. The exact
+elapsed wait depends on scheduling and the configured tick rate; this is
+**not** a hard real-time deadline or a guarantee that a driver callback
+will finish. It only bounds the waiting task's lock-acquisition attempt.
+
+If lock acquisition fails, the service refuses set/snapshot and lab lease
+acquisition, reports lab activity as unknown/active, and rejects maintenance.
+A timed-out lab lease release does **not** mark the lease free and logs an
+error. The independent polling task reports one error per continuous lock
+contention episode rather than blocking indefinitely; missed polls can still
+make a physical output remain on past its software deadline. The recovery
+mechanism for a permanently wedged callback or lost lease is not established.
+
+The host regression compiles and executes the real model and service against
+FreeRTOS semaphore and timer stubs, injecting lock timeouts for each exposed
+service operation and for deadline polling. Default V2 output switching is
+still inactive; no GPIO driver is registered, no reboot escalation is added,
+and no physical contact behavior is asserted.
