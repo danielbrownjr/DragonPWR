@@ -1,5 +1,6 @@
 #pragma once
 // C3-only, non-actuating orchestration. This is NOT physical contact feedback.
+#include "sdkconfig.h"
 #include "esp_err.h"
 #include "dp_v2_pwr_model.h"
 #ifdef __cplusplus
