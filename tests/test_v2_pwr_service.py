@@ -54,6 +54,16 @@ static int64_t fake_time_us;
 static int delay_calls, stop_after;
 static int high_calls, low_calls;
 static jmp_buf exit_run;
+#if defined(CONFIG_DP_V2_GPIO7_EXPERIMENT)
+static int lab_high, lab_low;
+static bool lab_fail_off;
+bool dp_v2_gpio7_drive(bool high, void *context) {
+    (void)context;
+    if (high) { ++lab_high; return true; }
+    ++lab_low;
+    return !lab_fail_off;
+}
+#endif
 
 SemaphoreHandle_t xSemaphoreCreateMutex(void) { return (void *)1; }
 int xSemaphoreTake(SemaphoreHandle_t lock, unsigned ticks) {
@@ -145,6 +155,43 @@ int main(void) {
     assert(dp_v2_pwr_model_disable(&s_model) == DP_V2_PWR_OK);
     assert(dp_v2_pwr_service_maintenance_allowed());
     assert(lock_calls > 0 && high_calls == 1);
+#if defined(CONFIG_DP_V2_GPIO7_EXPERIMENT)
+    assert(!s_model.enabled);
+    assert(dp_v2_pwr_service_lab_command(true, 0) == DP_V2_PWR_INVALID);
+    assert(dp_v2_pwr_service_lab_command(true, 300001) == DP_V2_PWR_INVALID);
+    assert(dp_v2_pwr_service_lab_begin());
+    assert(dp_v2_pwr_service_lab_command(true, 100) == DP_V2_PWR_UNAVAILABLE);
+    dp_v2_pwr_service_lab_end();
+    deny_lock = 1;
+    assert(dp_v2_pwr_service_lab_command(true, 100) == DP_V2_PWR_UNAVAILABLE);
+    deny_lock = 0;
+    fake_time_us = 200000;
+    assert(dp_v2_pwr_service_lab_command(true, 100) == DP_V2_PWR_OK);
+    assert(s_model.phase == DP_V2_PWR_ON && s_model.enabled && lab_high == 1);
+    assert(lab_low == 1);
+    assert(!dp_v2_pwr_service_maintenance_allowed());
+    assert(!dp_v2_pwr_service_lab_begin());
+    assert(dp_v2_pwr_service_lab_command(true, 100) == DP_V2_PWR_INVALID);
+    assert(dp_v2_pwr_service_lab_command(false, 0) == DP_V2_PWR_OK);
+    assert(s_model.phase == DP_V2_PWR_OFF && !s_model.enabled);
+    assert(dp_v2_pwr_service_maintenance_allowed());
+    assert(dp_v2_pwr_service_lab_command(true, 100) == DP_V2_PWR_OK);
+    fake_time_us = 400000;
+    run_polls(1);
+    assert(s_model.phase == DP_V2_PWR_OFF && s_model.enabled);
+    assert(!dp_v2_pwr_service_maintenance_allowed());
+    assert(dp_v2_pwr_service_lab_command(false, 0) == DP_V2_PWR_OK);
+    assert(dp_v2_pwr_service_lab_command(true, 100) == DP_V2_PWR_OK);
+    lab_fail_off = true;
+    assert(dp_v2_pwr_service_lab_command(false, 0) == DP_V2_PWR_DRIVER_ERROR);
+    assert(s_model.phase == DP_V2_PWR_FAULT && !s_model.enabled);
+    assert(!dp_v2_pwr_service_maintenance_allowed());
+    assert(dp_v2_pwr_service_lab_command(true, 100) == DP_V2_PWR_DRIVER_ERROR);
+    lab_fail_off = false;
+    assert(dp_v2_pwr_service_lab_command(false, 0) == DP_V2_PWR_OK);
+    assert(s_model.phase == DP_V2_PWR_OFF);
+    assert(dp_v2_pwr_service_maintenance_allowed());
+#endif
     puts("dp_v2_pwr_service mutex contention: PASS");
     return 0;
 }
@@ -168,5 +215,17 @@ with tempfile.TemporaryDirectory(prefix="dp-v2-service-host-") as directory:
         "-o", str(binary),
     ], check=True)
     subprocess.run([str(binary)], check=True)
+    lab_binary = tmp / "service-lab-test"
+    subprocess.run([
+        "cc", "-std=c11", "-Wall", "-Wextra", "-Werror",
+        "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
+        "-DCONFIG_DP_V2_GPIO7_EXPERIMENT=1",
+        "-I", str(tmp), "-I", str(root / "components/dp_relay"),
+        "-I", str(root / "components/dp_relay/include"),
+        str(tmp / "test.c"),
+        str(root / "components/dp_relay/dp_v2_pwr_model.c"),
+        "-o", str(lab_binary),
+    ], check=True)
+    subprocess.run([str(lab_binary)], check=True)
 
 print("PASS: source-executing bounded service locks and fail-closed guards")
