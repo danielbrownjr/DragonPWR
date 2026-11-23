@@ -24,6 +24,9 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "sdkconfig.h"
+#if defined(CONFIG_IDF_TARGET_ESP32C3) && defined(CONFIG_DP_V2_GPIO7_EXPERIMENT)
+#include "dp_v2_experiment.h"
+#endif
 
 static const char *TAG = "dp_portal";
 
@@ -409,6 +412,56 @@ static esp_err_t command_post(httpd_req_t *req)
     }
     return state_get(req);
 }
+
+#if defined(CONFIG_IDF_TARGET_ESP32C3) && defined(CONFIG_DP_V2_GPIO7_EXPERIMENT)
+// Deliberately not advertised in capabilities or exposed through /set or
+// /api/v2/command. This is a local-bench-only HTTP control, not secure against
+// LAN interception or a hostile AP client. Require a real configured token.
+static esp_err_t experimental_gpio7_post(httpd_req_t *req)
+{
+    char stored[DP_TOKEN_MAX + 1] = {0};
+    if (!token_read(stored, sizeof(stored)) || stored[0] == 0 || !authorize(req, NULL)) {
+        return send_error(req, "403 Forbidden", "configured control token required");
+    }
+    char acknowledgement[48] = {0};
+    if (httpd_req_get_hdr_value_str(req, "X-Dragon-Lab-Confirm",
+                                     acknowledgement, sizeof(acknowledgement)) != ESP_OK ||
+        strcmp(acknowledgement, "GPIO7-HUMAN-MONITORED") != 0) {
+        return send_error(req, "403 Forbidden", "explicit lab confirmation required");
+    }
+    char body[128];
+    if (recv_body(req, body, sizeof(body)) < 0) {
+        return send_error(req, "400 Bad Request", "JSON body required");
+    }
+    cJSON *json = cJSON_Parse(body);
+    if (!json) {
+        return send_error(req, "400 Bad Request", "invalid JSON");
+    }
+    const cJSON *pin_level = cJSON_GetObjectItemCaseSensitive(json, "level");
+    const cJSON *ms = cJSON_GetObjectItemCaseSensitive(json, "duration_ms");
+    // No boolean aliases or implicit float->int truncation.
+    const bool valid = cJSON_IsNumber(pin_level) && cJSON_IsNumber(ms) &&
+        (pin_level->valuedouble == 0.0 || pin_level->valuedouble == 1.0) &&
+        ms->valuedouble >= 100.0 && ms->valuedouble <= 2000.0 &&
+        ms->valuedouble == (double)ms->valueint;
+    const int level = valid ? pin_level->valueint : -1;
+    const uint32_t duration = valid ? (uint32_t)ms->valueint : 0;
+    cJSON_Delete(json);
+    if (!valid) {
+        return send_error(req, "400 Bad Request", "level 0/1 and integer duration_ms 100..2000 required");
+    }
+    esp_err_t err = dp_v2_experiment_gpio7_pulse(level, duration);
+    if (err != ESP_OK) {
+        return send_error(req, "500 Internal Server Error", esp_err_to_name(err));
+    }
+    cJSON *result = cJSON_CreateObject();
+    cJSON_AddStringToObject(result, "experiment", "gpio7 pulse released");
+    cJSON_AddNumberToObject(result, "commanded_gpio_level", level);
+    cJSON_AddNumberToObject(result, "duration_ms", duration);
+    cJSON_AddNullToObject(result, "physical_ac_state");
+    return send_json(req, result);
+}
+#endif
 
 // ------------------------------------------- stock-compatible API surface
 // Kept so integrations written against the stock firmware - notably
@@ -836,6 +889,9 @@ static const httpd_uri_t ROUTES[] = {
     { .uri = "/api/v2/diag/http",  .method = HTTP_GET,  .handler = http_diag_get },
     { .uri = "/api/v2/events",     .method = HTTP_GET,  .handler = unsupported_events_get },
     { .uri = "/api/v2/command",    .method = HTTP_POST, .handler = command_post },
+#if defined(CONFIG_IDF_TARGET_ESP32C3) && defined(CONFIG_DP_V2_GPIO7_EXPERIMENT)
+    { .uri = "/api/v2/experimental/gpio7", .method = HTTP_POST, .handler = experimental_gpio7_post },
+#endif
     { .uri = "/api/v2/token",      .method = HTTP_POST, .handler = token_post },
     { .uri = "/api/v2/restart",       .method = HTTP_POST, .handler = restart_post },
     { .uri = "/api/v2/factory-reset", .method = HTTP_POST, .handler = factory_reset_post },

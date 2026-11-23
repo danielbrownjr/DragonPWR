@@ -9,6 +9,8 @@ on:
       - partitions_v2.csv
       - sdkconfig.defaults
       - sdkconfig.v2.defaults
+      - sdkconfig.v2.lab.defaults
+      - scripts/test_v2_gpio7_experiment.py
       - main/**
       - components/**
       - tests/check_dc_ui_pin.py
@@ -117,6 +119,9 @@ jobs:
           python3 tests/check_dc_ui_pin.py
           python3 -m unittest discover -s tests -p 'test_dragon_core_source_policy.py' -v
 
+      - name: Host test experimental GPIO7 facility (no GPIO access)
+        run: python3 scripts/test_v2_gpio7_experiment.py
+
       - name: Build V2 ESP32-C3 with ESP-IDF 5.3.5
         run: |
           docker run --rm \
@@ -133,7 +138,10 @@ jobs:
               grep -q "^CONFIG_XTAL_FREQ_40=y$" sdkconfig.v2
               grep -q "^CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions_v2.csv\"$" sdkconfig.v2
               grep -q "^CONFIG_ESPTOOLPY_FLASHSIZE=\"4MB\"$" sdkconfig.v2
-              python3 -c "from pathlib import Path; assert Path(\"build-v2/dragonpwr.bin\").stat().st_size <= 0x1f0000"
+              test "$(stat -c%s build-v2/dragonpwr.bin)" -le 2031616
+              ! grep -q "^CONFIG_DP_V2_GPIO7_EXPERIMENT=y$" sdkconfig.v2 || exit 1
+              test -f build-v2/compile_commands.json
+              ! grep -q "dp_v2_gpio7_experiment.c" build-v2/compile_commands.json || exit 1
             '
 
       - name: Assert inactive V2 hardware is selected
@@ -141,10 +149,11 @@ jobs:
         run: |
           set -euo pipefail
           test -f build-v2/dragonpwr.elf
+          test -f build-v2/compile_commands.json
           grep -q 'dp_relay_v2_inactive.c' build-v2/compile_commands.json
           grep -q 'dp_button_v2_inactive.c' build-v2/compile_commands.json
-          ! grep -Eq '/dp_relay/dp_relay.c[" ]' build-v2/compile_commands.json
-          ! grep -Eq '/dp_button/dp_button.c[" ]' build-v2/compile_commands.json
+          ! grep -Eq '/dp_relay/dp_relay.c[" ]' build-v2/compile_commands.json || exit 1
+          ! grep -Eq '/dp_button/dp_button.c[" ]' build-v2/compile_commands.json || exit 1
 
       - name: Upload V2 C3 firmware build outputs
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -159,3 +168,51 @@ jobs:
             build-v2/flasher_args.json
             build-v2/flash_args
 
+
+  esp32c3-v2-lab:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      - name: Verify GPIO7 lab driver under host mocks
+        run: python3 scripts/test_v2_gpio7_experiment.py
+
+      - name: Build explicitly opt-in C3 experimental image (not a release)
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            espressif/idf:v5.3.5 \
+            bash -lc '
+              set -euo pipefail
+              git config --global --add safe.directory /work
+              idf.py -B build-v2-lab -D SDKCONFIG=sdkconfig.v2.lab -D SDKCONFIG_DEFAULTS=sdkconfig.v2.lab.defaults set-target esp32c3
+              idf.py -B build-v2-lab -D SDKCONFIG=sdkconfig.v2.lab -D SDKCONFIG_DEFAULTS=sdkconfig.v2.lab.defaults build
+              grep -q "^CONFIG_DP_V2_GPIO7_EXPERIMENT=y$" sdkconfig.v2.lab
+              grep -q "^CONFIG_IDF_TARGET=\"esp32c3\"$" sdkconfig.v2.lab
+              grep -q "dp_v2_gpio7_experiment.c" build-v2-lab/compile_commands.json
+              grep -q "dp_relay_v2_inactive.c" build-v2-lab/compile_commands.json
+              test "$(stat -c%s build-v2-lab/dragonpwr.bin)" -le 2031616
+            '
+
+      - name: Label experimental candidate (not firmware release)
+        run: |
+          echo "EXPERIMENTAL / C3 GPIO7 / DO NOT DEPLOY UNATTENDED / NOT ELECTRICALLY QUALIFIED" > EXPERIMENTAL-NOT-RELEASE.txt
+
+      - name: Upload review-only experimental image
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: dragonpwr-esp32c3-v2-gpio7-experimental
+          if-no-files-found: error
+          path: |
+            EXPERIMENTAL-NOT-RELEASE.txt
+            build-v2-lab/dragonpwr.bin
+            build-v2-lab/dragonpwr.elf
+            build-v2-lab/bootloader/bootloader.bin
+            build-v2-lab/partition_table/partition-table.bin
+            build-v2-lab/ota_data_initial.bin
+            build-v2-lab/flasher_args.json
+            sdkconfig.v2.lab

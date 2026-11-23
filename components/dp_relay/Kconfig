@@ -1,0 +1,11 @@
+menu "DragonPWR experimental hardware"
+    config DP_V2_GPIO7_EXPERIMENT
+        bool "Enable V2 experimental GPIO7 human-observed pulse endpoint"
+        depends on IDF_TARGET_ESP32C3
+        default n
+        help
+            Builds a dedicated manual-only GPIO7 pulse mechanism. No
+            automatic actuation, restore, USB output or SET input.
+            This is NOT electrical qualification and must never be
+            enabled in a production or unattended device.
+endmenu
