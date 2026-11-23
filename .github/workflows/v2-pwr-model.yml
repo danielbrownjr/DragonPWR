@@ -8,6 +8,7 @@ on:
       - 'main/app_main.c'
       - 'scripts/test_v2_gpio7_experiment.py'
       - 'tests/test_v2_pwr_model.c'
+      - 'tests/test_v2_pwr_service.py'
       - 'tests/check_v2_pwr_integration.py'
       - '.github/workflows/v2-pwr-model.yml'
   push:
@@ -17,6 +18,7 @@ on:
       - 'main/app_main.c'
       - 'scripts/test_v2_gpio7_experiment.py'
       - 'tests/test_v2_pwr_model.c'
+      - 'tests/test_v2_pwr_service.py'
       - 'tests/check_v2_pwr_integration.py'
       - '.github/workflows/v2-pwr-model.yml'
   workflow_dispatch:
@@ -39,5 +41,7 @@ jobs:
             tests/test_v2_pwr_model.c \
             -o /tmp/test_v2_pwr_model
           /tmp/test_v2_pwr_model
+      - name: Exercise bounded V2 PWR service mutex waits with host RTOS mocks
+        run: python3 tests/test_v2_pwr_service.py
       - name: Verify inactive C3 PWR wiring
         run: python3 tests/check_v2_pwr_integration.py
