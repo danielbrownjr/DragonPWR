@@ -13,11 +13,18 @@
 #include <string.h>
 
 #define DP_V2_PWR_TICK_MS 10
+// Bounded acquisition. Extra tick prevents a zero-tick timeout on coarse RTOS ticks.
+#define DP_V2_PWR_LOCK_WAIT_TICKS (pdMS_TO_TICKS(50) + 1U)
 static const char *TAG = "dp_v2_pwr_service";
 static SemaphoreHandle_t s_lock;
 static dp_v2_pwr_model_t s_model;
 static bool s_started;
 static bool s_lab_active;
+
+static bool lock_service(void)
+{
+    return s_lock && xSemaphoreTake(s_lock, DP_V2_PWR_LOCK_WAIT_TICKS) == pdTRUE;
+}
 
 static uint64_t clock_ms(void)
 {
@@ -27,9 +34,11 @@ static uint64_t clock_ms(void)
 static void run(void *unused)
 {
     (void)unused;
+    bool lock_wait_reported = false;
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(DP_V2_PWR_TICK_MS) + 1);
-        if (xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
+        if (lock_service()) {
+            lock_wait_reported = false;
             const bool was_retry = s_model.phase == DP_V2_PWR_FAULT &&
                 s_model.deadline_off_retries_remaining > 0;
             const dp_v2_pwr_result_t result = dp_v2_pwr_model_poll(&s_model, clock_ms());
@@ -41,6 +50,11 @@ static void run(void *unused)
                 }
             }
             xSemaphoreGive(s_lock);
+        } else if (!lock_wait_reported) {
+            // The monitor must not wait indefinitely behind a driver callback.
+            // A skipped poll is NOT a successful OFF or a bounded release time.
+            ESP_LOGE(TAG, "PWR scheduler lock unavailable; deadline safety unverified");
+            lock_wait_reported = true;
         }
     }
 }
@@ -66,7 +80,7 @@ esp_err_t dp_v2_pwr_service_start(void)
 dp_v2_pwr_result_t dp_v2_pwr_service_set(bool on, uint32_t duration_ms)
 {
     if (!s_started || !s_lock) return DP_V2_PWR_UNAVAILABLE;
-    if (xSemaphoreTake(s_lock, portMAX_DELAY) != pdTRUE) return DP_V2_PWR_UNAVAILABLE;
+    if (!lock_service()) return DP_V2_PWR_UNAVAILABLE;
     dp_v2_pwr_result_t result = s_lab_active ? DP_V2_PWR_UNAVAILABLE :
         dp_v2_pwr_model_set(&s_model, on, clock_ms(), duration_ms);
     xSemaphoreGive(s_lock);
@@ -77,7 +91,7 @@ dp_v2_pwr_result_t dp_v2_pwr_service_snapshot(dp_v2_pwr_model_t *out)
 {
     if (!out) return DP_V2_PWR_INVALID;
     if (!s_started || !s_lock) return DP_V2_PWR_UNAVAILABLE;
-    if (xSemaphoreTake(s_lock, portMAX_DELAY) != pdTRUE) return DP_V2_PWR_UNAVAILABLE;
+    if (!lock_service()) return DP_V2_PWR_UNAVAILABLE;
     *out = s_model;
     // Never expose a driver callback or private context in a snapshot.
     out->drive = NULL;
@@ -89,7 +103,7 @@ dp_v2_pwr_result_t dp_v2_pwr_service_snapshot(dp_v2_pwr_model_t *out)
 bool dp_v2_pwr_service_lab_begin(void)
 {
     if (!s_started || !s_lock) return false;
-    if (xSemaphoreTake(s_lock, portMAX_DELAY) != pdTRUE) return false;
+    if (!lock_service()) return false;
     const bool permitted = !s_lab_active && !s_model.enabled &&
         s_model.phase == DP_V2_PWR_OFF;
     if (permitted) s_lab_active = true;
@@ -100,9 +114,12 @@ bool dp_v2_pwr_service_lab_begin(void)
 void dp_v2_pwr_service_lab_end(void)
 {
     if (!s_started || !s_lock) return;
-    if (xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
+    if (lock_service()) {
         s_lab_active = false;
         xSemaphoreGive(s_lock);
+    } else {
+        // Do not announce release of ownership if arbitration is unavailable.
+        ESP_LOGE(TAG, "GPIO7 lab lease release unavailable; lease retained");
     }
 }
 
@@ -110,7 +127,7 @@ bool dp_v2_pwr_service_lab_active(void)
 {
     // Unknown/unavailable is conservatively treated as active for callers.
     if (!s_started || !s_lock) return true;
-    if (xSemaphoreTake(s_lock, portMAX_DELAY) != pdTRUE) return true;
+    if (!lock_service()) return true;
     const bool active = s_lab_active;
     xSemaphoreGive(s_lock);
     return active;
@@ -119,7 +136,7 @@ bool dp_v2_pwr_service_lab_active(void)
 bool dp_v2_pwr_service_maintenance_allowed(void)
 {
     if (!s_started || !s_lock) return false;
-    if (xSemaphoreTake(s_lock, portMAX_DELAY) != pdTRUE) return false;
+    if (!lock_service()) return false;
     const bool allowed = !s_lab_active && !s_model.enabled &&
         s_model.phase == DP_V2_PWR_OFF;
     xSemaphoreGive(s_lock);
