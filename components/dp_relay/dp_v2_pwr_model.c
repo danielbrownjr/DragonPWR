@@ -11,6 +11,7 @@ static dp_v2_pwr_result_t off(dp_v2_pwr_model_t *m) {
         return DP_V2_PWR_DRIVER_ERROR;
     }
     m->phase=DP_V2_PWR_OFF;
+    m->deadline_off_retries_remaining=0;
     return DP_V2_PWR_OK;
 }
 dp_v2_pwr_result_t dp_v2_pwr_model_enable(dp_v2_pwr_model_t *m, dp_v2_pwr_drive_fn drive, void *ctx, uint32_t max_ms) {
@@ -53,6 +54,18 @@ dp_v2_pwr_result_t dp_v2_pwr_model_set(dp_v2_pwr_model_t *m, bool on, uint64_t n
 }
 dp_v2_pwr_result_t dp_v2_pwr_model_poll(dp_v2_pwr_model_t *m, uint64_t now) {
     if (!m) return DP_V2_PWR_INVALID;
-    if (m->phase!=DP_V2_PWR_ON || now<m->deadline_ms) return DP_V2_PWR_OK;
-    return off(m);
+    if (m->phase==DP_V2_PWR_ON && now>=m->deadline_ms) {
+        const dp_v2_pwr_result_t result = off(m);
+        if (result!=DP_V2_PWR_OK) {
+            // Schedule bounded retries on subsequent scheduler polls only.
+            // A failed OFF never changes the software phase back to OFF.
+            m->deadline_off_retries_remaining=DP_V2_PWR_DEADLINE_OFF_RETRIES;
+        }
+        return result;
+    }
+    if (m->phase==DP_V2_PWR_FAULT && m->deadline_off_retries_remaining) {
+        --m->deadline_off_retries_remaining;
+        return off(m);
+    }
+    return DP_V2_PWR_OK;
 }

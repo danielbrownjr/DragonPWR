@@ -30,9 +30,15 @@ static void run(void *unused)
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(DP_V2_PWR_TICK_MS) + 1);
         if (xSemaphoreTake(s_lock, portMAX_DELAY) == pdTRUE) {
+            const bool was_retry = s_model.phase == DP_V2_PWR_FAULT &&
+                s_model.deadline_off_retries_remaining > 0;
             const dp_v2_pwr_result_t result = dp_v2_pwr_model_poll(&s_model, clock_ms());
             if (result != DP_V2_PWR_OK) {
                 ESP_LOGE(TAG, "deadline OFF request failed: %d; software state is not physical AC feedback", (int)result);
+                if (was_retry && s_model.phase == DP_V2_PWR_FAULT &&
+                    s_model.deadline_off_retries_remaining == 0) {
+                    ESP_LOGE(TAG, "deadline OFF retry budget exhausted; FAULT remains latched; physical AC state UNKNOWN");
+                }
             }
             xSemaphoreGive(s_lock);
         }
