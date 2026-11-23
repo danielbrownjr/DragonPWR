@@ -120,7 +120,11 @@ latch) and F2 (checkout pin/Node.js 20 warning) were closed before merge.
 The following findings remain **blocking for future GPIO7 service-driver
 registration**, not for the merged non-actuating foundation:
 
-- **F3:** Deadline-triggered OFF failure lacks subsequent retry/escalation.
+- **F3 (partially mitigated by proposed PR #45):** The model now makes at most
+  three further OFF attempts on subsequent scheduler polls after a failed
+  deadline-triggered OFF, and retains FAULT if all fail. Recovery after
+  exhaustion, bounded task scheduling, safe physical fallback and any reboot
+  escalation remain **unqualified** and block future driver registration.
 - **F4:** Shared dragon-core Wi-Fi/AP provisioning reboot paths bypass the
   product maintenance guard.
 - **F5:** Driver ownership must be enforced centrally for *all* driver calls,
@@ -134,3 +138,25 @@ Physical reset behavior while GPIO7 is HIGH, contact topology, leakage versus
 actual loaded switching, and safe output release under load are unverified.
 The unloaded approximately 117 VAC HIGH reading alone must not be taken as
 proof that the relay contacts closed.
+
+## PR #45: deadline-OFF retry policy (non-actuating software only)
+
+This incremental change adds **three additional automatic OFF callbacks**
+after a deadline-triggered OFF failure, one per subsequent model poll. The
+software model remains in FAULT throughout unsuccessful attempts. A successful
+OFF clears the retry count and returns the model to OFF; exhaustion leaves
+FAULT latched and the service logs a terminal error. A deliberate OFF command
+can still attempt recovery afterward.
+
+This is a bounded **software retry budget**, not a watchdog, deadline
+guarantee or power-isolation mechanism. The 10 ms nominal task interval is
+not a hard timing bound; a blocked scheduler, hung driver, failed output pin
+or MCU reset can leave physical AC in an unknown state. Automatic reboot is
+**not implemented** because GPIO7 behavior during reset while HIGH has not
+been measured. Driver registration, HTTP ON controls, additional pin access,
+new production capabilities and physical tests are out of scope.
+
+The original F3 finding is therefore **partially mitigated**, not closed for
+hardware activation. F4–F6, F9 and independent contact/reset evidence remain
+prerequisites. Host regression tests exercise failed and successful OFF
+retries, budget exhaustion, manual recovery and initial-enable errors.
