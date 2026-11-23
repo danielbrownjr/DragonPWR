@@ -96,6 +96,13 @@ footer{font-size:12px;color:var(--muted);margin-top:18px;display:flex;justify-co
   </div>
   <p id="message" role="status" aria-live="polite"></p>
 </section>
+<section class="panel" id="lab-power-panel" aria-labelledby="lab-power-title" hidden>
+  <h2 id="lab-power-title">Experimental V2 power button</h2>
+  <p class="caption">LAB BUILD ONLY. GPIO7 command, not verified physical outlet state. Human-monitored testing only; independent upstream mains disconnect required. ON automatically requests OFF after at most five minutes. No printer or unattended loads.</p>
+  <p class="state unknown" id="lab-power-state">Software status unavailable; physical outlet state unknown</p>
+  <button id="lab-power-button" disabled>Lab control unavailable</button>
+  <p id="lab-power-message" role="status" aria-live="polite"></p>
+</section>
 <section class="panel" aria-labelledby="health-title">
   <h2 id="health-title">System health</h2>
   <div class="metrics"><div class="metric"><small>Free memory</small><b id="free">—</b></div><div class="metric"><small>Minimum free</small><b id="minimum">—</b></div><div class="metric"><small>Largest block</small><b id="largest">—</b></div></div>
@@ -140,6 +147,18 @@ function draw(){
     button.textContent=active?(on?'Turn off':'Turn on'):'Control disabled';
     button.className=active?(on?'danger':'primary'):'';
   });
+  var lab=!!(connected&&info&&Array.isArray(info.capabilities)&&
+    info.capabilities.indexOf('experimental_power')!==-1);
+  $('lab-power-panel').hidden=!lab;
+  var pwr=state&&state.pwr_control;
+  var labOn=!!(pwr&&pwr.requested_state==='on');
+  $('lab-power-state').textContent=pwr?
+    'Software request: '+pwr.requested_state.toUpperCase()+'; physical outlet state UNKNOWN':
+    'Software status unavailable; physical outlet state UNKNOWN';
+  $('lab-power-button').disabled=!lab||busy||maintenanceBusy||!pwr||
+    pwr.requested_state==='unavailable'||pwr.lab_gpio7_active||
+    (pwr.requested_state==='fault'&&labOn);
+  $('lab-power-button').textContent=labOn?'Request GPIO7 OFF':'Request GPIO7 ON (5 min max)';
   var h=state&&state.heap||{};
   $('free').textContent=memory(h.free);$('minimum').textContent=memory(h.min_free);
   $('largest').textContent=memory(h.largest_block);
@@ -259,6 +278,41 @@ function toggle(name){
     .catch(function(err){msg('Command failed: '+((err&&(err.message||err.error))||'no response'),true)})
     .then(function(){busy=false;draw()});
 }
+function labPowerPost(on,retried){
+  var t=token();
+  return fetch('/api/v2/experimental/power',{method:'POST',headers:{
+    'Content-Type':'application/json',
+    'X-Dragon-Auth':t,
+    'X-Dragon-Lab-Confirm':'GPIO7-HUMAN-MONITORED'
+  },body:JSON.stringify(on?{on:true,duration_ms:300000}:{on:false})})
+    .then(function(r){return r.json().catch(function(){return {}}).then(function(j){
+      if(r.status===403&&!retried){
+        var entered=prompt('Configured lab control token');
+        if(entered){try{localStorage.setItem('db_tok',entered)}catch(e){}
+          return labPowerPost(on,true)}
+      }
+      if(!r.ok)throw j;
+      return j;
+    })});
+}
+function toggleLabPower(){
+  var p=state&&state.pwr_control;
+  if(busy||!connected||!info||!p||info.boot_id!==state.boot_id||
+     !Array.isArray(info.capabilities)||
+     info.capabilities.indexOf('experimental_power')===-1||
+     p.lab_gpio7_active||p.requested_state==='unavailable')return;
+  var on=p.requested_state!=='on';
+  if(on&&!confirm('LAB ONLY: request GPIO7 ON for up to 5 minutes? Physical outlet state is UNKNOWN. Requires a human-monitored isolated fixture and an independent upstream disconnect.'))return;
+  busy=true;draw();
+  $('lab-power-message').textContent='Sending lab command…';
+  labPowerPost(on,false).then(function(next){
+    if(next&&next.boot_id===info.boot_id&&next.pwr_control)state=next;
+    $('lab-power-message').textContent='Command accepted; physical outlet state UNKNOWN';
+  }).catch(function(err){
+    $('lab-power-message').textContent='Lab command failed: '+((err&&(err.error||err.message))||'no response');
+  }).then(function(){busy=false;draw()});
+}
+$('lab-power-button').addEventListener('click',toggleLabPower);
 $('mains-button').addEventListener('click',function(){toggle('mains')});
 $('usb1-button').addEventListener('click',function(){toggle('usb1')});
 $('restart-button').addEventListener('click',function(){maintenanceAction('restart')});
