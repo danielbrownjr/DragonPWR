@@ -56,7 +56,16 @@ Current Phase 1 state:
   "boot_id": "boot-session-identifier",
   "outputs": {"mains": false, "usb1": false},
   "restore": "off",
-  "meter": null,
+  "meter": {
+    "status": "unavailable",
+    "voltage": null, "current": null, "power": null, "frequency": null,
+    "energy": null,
+    "reasons": {
+      "voltage": "unavailable", "current": "unavailable",
+      "power": "unavailable", "frequency": "unavailable",
+      "energy": "not_implemented"
+    }
+  },
   "printer": null,
   "heap": {
     "free": 0,
@@ -95,9 +104,51 @@ When the PWR service is unavailable, the lease helper conservatively reports
 service state rather than proof of an active lease.
 Neither target reports physical contact or voltage through these fields.
 
-Heap values are bytes. `meter` and `printer` are deliberately `null` until
-those features exist so clients can distinguish "not implemented" from a real
-zero reading.
+Heap values are bytes. V2 always returns `meter: null`; printer remains null
+on both targets.
+
+#### V1 meter telemetry
+
+The HLW8112 is read-only. No meter reset, configuration or calibration writes
+are performed. The object contains:
+
+| Field | Meaning |
+|---|---|
+| status | unavailable before the first poll or if startup fails; invalid after a failed transaction or changing configuration; stale when a successful snapshot is older than 3 seconds; fresh after a complete validated sweep |
+| voltage | V RMS or null |
+| current | A RMS or null |
+| power | signed active W or null |
+| frequency | Hz or null |
+| energy | always null in this increment |
+| reasons | keyed reason strings for null measurement fields |
+| raw | only present for fresh sweeps; unsigned register values and factory coefficients |
+
+Fresh describes transport/configuration consistency, not metrological validity.
+The driver reads control registers before and after the sweep, but the chip's
+individual registers are sampled sequentially, not latched simultaneously.
+The raw keys are syscon, emucon, hfconst, emucon2, voltage, current, power,
+voltage_coef, current_coef, power_coef and frequency. Raw power is an unsigned
+32-bit representation of a signed two's-complement register.
+
+Scaling requires observed ADC enable bits, factory-calibrated gain settings
+and nonzero coefficients. Power additionally requires PARUN. Frequency
+requires ZxEN and WaveEN, nonzero raw frequency and 45–65 Hz. The stock
+publication gate (voltage at least 10 V and qualified frequency) suppresses
+scaled voltage/current/power if it fails. Current below 0.01 A is reported as
+zero, with power also zero when otherwise qualified. BTT board factors
+(K1=1, K2=0.51) are recovered from stock firmware, not reference-calibrated.
+
+Reasons include adc_disabled, unsupported_gain, zero_coefficient,
+parun_disabled, frequency_disabled, no_frequency, frequency_out_of_range,
+voltage_unqualified, voltage_below_10v, frequency_unqualified, unavailable,
+invalid, stale and not_implemented. A numeric zero is distinct from null.
+Polls sleep one second between sweeps; the 80 ms per-read timeout is rounded
+up to ticks. No energy or clear-on-read interrupt registers are accessed.
+No metering-based power policy is implemented.
+
+The legacy stock route still uses compatibility zeros, not measurements;
+clients requiring valid telemetry must use the native state route. Hardware
+accuracy, memory headroom and cold-start meter behavior remain unqualified.
 
 ### `GET /api/v2/logs`
 

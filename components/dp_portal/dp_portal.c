@@ -346,17 +346,27 @@ static esp_err_t state_get(httpd_req_t *req)
     cJSON_AddStringToObject(root, "restore",
                             dp_restore_to_str(dp_relay_get_restore()));
 #endif
-    // No meter and no printer source yet; both are declared null rather than
-    // zeroed so a client can tell "not implemented" from "measured zero".
+    // V1 metering is observational; V2 has no qualified meter driver.
 #if defined(CONFIG_IDF_TARGET_ESP32C2)
     dp_meter_snapshot_t sample = dp_meter_snapshot();
     cJSON *meter = cJSON_AddObjectToObject(root, "meter");
-    cJSON_AddStringToObject(meter, "status", sample.valid ? "raw" : "unavailable");
-    cJSON_AddNullToObject(meter, "voltage");
-    cJSON_AddNullToObject(meter, "current");
-    cJSON_AddNullToObject(meter, "power");
+    dp_meter_values_t v = dp_meter_values(&sample);
+    cJSON_AddStringToObject(meter, "status", dp_meter_status_name(sample.status));
+    cJSON *reasons = cJSON_AddObjectToObject(meter, "reasons");
+    const char *names[] = {"voltage", "current", "power", "frequency"};
+    const char *why[] = {v.voltage_reason, v.current_reason, v.power_reason, v.frequency_reason};
+    const float values[] = {v.voltage, v.current, v.power, v.frequency};
+    for (size_t i = 0; i < 4; ++i) {
+        if (why[i]) {
+            cJSON_AddNullToObject(meter, names[i]);
+            cJSON_AddStringToObject(reasons, names[i], why[i]);
+        } else {
+            cJSON_AddNumberToObject(meter, names[i], values[i]);
+        }
+    }
     cJSON_AddNullToObject(meter, "energy");
-    if (sample.valid) {
+    cJSON_AddStringToObject(reasons, "energy", "not_implemented");
+    if (sample.status == DP_METER_FRESH) {
         cJSON *raw = cJSON_AddObjectToObject(meter, "raw");
         cJSON_AddNumberToObject(raw, "syscon", sample.syscon);
         cJSON_AddNumberToObject(raw, "emucon", sample.emucon);

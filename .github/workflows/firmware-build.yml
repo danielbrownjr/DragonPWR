@@ -13,6 +13,8 @@ on:
       - scripts/test_v2_gpio7_experiment.py
       - main/**
       - components/**
+      - tests/test_meter_protocol.c
+      - docs/API.md
       - tests/check_dc_ui_pin.py
       - tests/test_dragon_core_source_policy.py
       - tests/check_http_diagnostics.py
@@ -32,6 +34,8 @@ on:
       - sdkconfig.defaults
       - main/**
       - components/**
+      - tests/test_meter_protocol.c
+      - docs/API.md
       - tests/check_dc_ui_pin.py
       - tests/test_dragon_core_source_policy.py
       - tests/check_http_diagnostics.py
@@ -60,6 +64,13 @@ jobs:
         run: |
           python3 tests/check_dc_ui_pin.py
           python3 -m unittest discover -s tests -p 'test_dragon_core_source_policy.py' -v
+
+      - name: Execute HLW8112 protocol and conversion regression tests
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -pedantic -fsanitize=undefined \
+            -I components/dp_meter/include components/dp_meter/dp_meter_protocol.c \
+            tests/test_meter_protocol.c -lm -o /tmp/test_meter
+          /tmp/test_meter
 
       - name: Check unsupported events route contract
         run: python3 tests/check_events_route.py
