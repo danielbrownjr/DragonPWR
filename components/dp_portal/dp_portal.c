@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "dp_portal.h"
+#include "dp_meter.h"
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -347,7 +348,31 @@ static esp_err_t state_get(httpd_req_t *req)
 #endif
     // No meter and no printer source yet; both are declared null rather than
     // zeroed so a client can tell "not implemented" from "measured zero".
+#if defined(CONFIG_IDF_TARGET_ESP32C2)
+    dp_meter_snapshot_t sample = dp_meter_snapshot();
+    cJSON *meter = cJSON_AddObjectToObject(root, "meter");
+    cJSON_AddStringToObject(meter, "status", sample.valid ? "raw" : "unavailable");
+    cJSON_AddNullToObject(meter, "voltage");
+    cJSON_AddNullToObject(meter, "current");
+    cJSON_AddNullToObject(meter, "power");
+    cJSON_AddNullToObject(meter, "energy");
+    if (sample.valid) {
+        cJSON *raw = cJSON_AddObjectToObject(meter, "raw");
+        cJSON_AddNumberToObject(raw, "syscon", sample.syscon);
+        cJSON_AddNumberToObject(raw, "emucon", sample.emucon);
+        cJSON_AddNumberToObject(raw, "hfconst", sample.hfconst);
+        cJSON_AddNumberToObject(raw, "emucon2", sample.emucon2);
+        cJSON_AddNumberToObject(raw, "voltage", sample.voltage_raw);
+        cJSON_AddNumberToObject(raw, "current", sample.current_raw);
+        cJSON_AddNumberToObject(raw, "power", sample.power_raw);
+        cJSON_AddNumberToObject(raw, "voltage_coef", sample.voltage_coef);
+        cJSON_AddNumberToObject(raw, "current_coef", sample.current_coef);
+        cJSON_AddNumberToObject(raw, "power_coef", sample.power_coef);
+        cJSON_AddNumberToObject(raw, "frequency", sample.frequency_raw);
+    }
+#else
     cJSON_AddNullToObject(root, "meter");
+#endif
     cJSON_AddNullToObject(root, "printer");
 
     // Headroom for whatever comes next - a TLS printer client is the obvious

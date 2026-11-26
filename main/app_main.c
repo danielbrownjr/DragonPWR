@@ -9,6 +9,7 @@
 #include "dc_evlog.h"
 #include "dc_wifi.h"
 #include "dp_board.h"
+#include "dp_meter.h"
 #include "dp_button.h"
 #include "dp_portal.h"
 #include "dp_relay.h"
@@ -171,6 +172,11 @@ void app_main(void)
     ESP_ERROR_CHECK(dc_wifi_start());
     ESP_ERROR_CHECK(dp_portal_start());
     confirm_running_image();
+#if defined(CONFIG_IDF_TARGET_ESP32C2)
+    esp_err_t meter_err = dp_meter_start();
+    if (meter_err != ESP_OK)
+        ESP_LOGW(TAG, "meter unavailable: %s", esp_err_to_name(meter_err));
+#endif
     // Everything that runs today is up by here, so this is the baseline any
     // new feature has to fit into. Live numbers are in /api/v2/state.
     dc_evlog_add("heap free %u KB, min %u KB, largest block %u KB",
