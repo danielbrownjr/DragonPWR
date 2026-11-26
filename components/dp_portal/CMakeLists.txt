@@ -4,7 +4,7 @@ else()
     set(DP_JSON_COMPONENT json)
 endif()
 idf_component_register(
-    SRCS "dp_portal.c"
+    SRCS "dp_portal.c" "dp_meter_json.c"
     INCLUDE_DIRS "include"
     EMBED_TXTFILES "power.html"
     REQUIRES esp_http_server ${DP_JSON_COMPONENT} app_update nvs_flash dc_portal dc_wifi dc_evlog dp_relay dp_meter

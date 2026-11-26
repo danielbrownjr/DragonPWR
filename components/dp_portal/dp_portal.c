@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "dp_portal.h"
 #include "dp_meter.h"
+#include "dp_meter_json.h"
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -349,40 +350,15 @@ static esp_err_t state_get(httpd_req_t *req)
     // V1 metering is observational; V2 has no qualified meter driver.
 #if defined(CONFIG_IDF_TARGET_ESP32C2)
     dp_meter_snapshot_t sample = dp_meter_snapshot();
-    cJSON *meter = cJSON_AddObjectToObject(root, "meter");
-    dp_meter_values_t v = dp_meter_values(&sample);
-    cJSON_AddStringToObject(meter, "status", dp_meter_status_name(sample.status));
-    cJSON *reasons = cJSON_AddObjectToObject(meter, "reasons");
-    const char *names[] = {"voltage", "current", "power", "frequency"};
-    const char *why[] = {v.voltage_reason, v.current_reason, v.power_reason, v.frequency_reason};
-    const float values[] = {v.voltage, v.current, v.power, v.frequency};
-    for (size_t i = 0; i < 4; ++i) {
-        if (why[i]) {
-            cJSON_AddNullToObject(meter, names[i]);
-            cJSON_AddStringToObject(reasons, names[i], why[i]);
-        } else {
-            cJSON_AddNumberToObject(meter, names[i], values[i]);
-        }
-    }
-    cJSON_AddNullToObject(meter, "energy");
-    cJSON_AddStringToObject(reasons, "energy", "not_implemented");
-    if (sample.status == DP_METER_FRESH) {
-        cJSON *raw = cJSON_AddObjectToObject(meter, "raw");
-        cJSON_AddNumberToObject(raw, "syscon", sample.syscon);
-        cJSON_AddNumberToObject(raw, "emucon", sample.emucon);
-        cJSON_AddNumberToObject(raw, "hfconst", sample.hfconst);
-        cJSON_AddNumberToObject(raw, "emucon2", sample.emucon2);
-        cJSON_AddNumberToObject(raw, "voltage", sample.voltage_raw);
-        cJSON_AddNumberToObject(raw, "current", sample.current_raw);
-        cJSON_AddNumberToObject(raw, "power", sample.power_raw);
-        cJSON_AddNumberToObject(raw, "voltage_coef", sample.voltage_coef);
-        cJSON_AddNumberToObject(raw, "current_coef", sample.current_coef);
-        cJSON_AddNumberToObject(raw, "power_coef", sample.power_coef);
-        cJSON_AddNumberToObject(raw, "frequency", sample.frequency_raw);
-    }
+    cJSON *meter = dp_meter_json(&sample);
 #else
-    cJSON_AddNullToObject(root, "meter");
+    cJSON *meter = dp_meter_json(NULL);
 #endif
+    if (!meter || !cJSON_AddItemToObject(root, "meter", meter)) {
+        cJSON_Delete(meter);
+        cJSON_Delete(root);
+        return send_error(req, "500 Internal Server Error", "meter serialization failed");
+    }
     cJSON_AddNullToObject(root, "printer");
 
     // Headroom for whatever comes next - a TLS printer client is the obvious

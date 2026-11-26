@@ -14,6 +14,7 @@ on:
       - main/**
       - components/**
       - tests/test_meter_protocol.c
+      - tests/test_meter_json.c
       - docs/API.md
       - tests/check_dc_ui_pin.py
       - tests/test_dragon_core_source_policy.py
@@ -35,6 +36,7 @@ on:
       - main/**
       - components/**
       - tests/test_meter_protocol.c
+      - tests/test_meter_json.c
       - docs/API.md
       - tests/check_dc_ui_pin.py
       - tests/test_dragon_core_source_policy.py
@@ -71,6 +73,17 @@ jobs:
             -I components/dp_meter/include components/dp_meter/dp_meter_protocol.c \
             tests/test_meter_protocol.c -lm -o /tmp/test_meter
           /tmp/test_meter
+
+      - name: Execute native meter JSON tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcjson-dev
+          cc -std=c11 -Wall -Wextra -Werror -pedantic -fsanitize=undefined \
+            -I components/dp_meter/include -I components/dp_portal/include \
+            $(pkg-config --cflags libcjson) components/dp_meter/dp_meter_protocol.c \
+            components/dp_portal/dp_meter_json.c tests/test_meter_json.c \
+            $(pkg-config --libs libcjson) -o /tmp/test_meter_json
+          /tmp/test_meter_json
 
       - name: Check unsupported events route contract
         run: python3 tests/check_events_route.py

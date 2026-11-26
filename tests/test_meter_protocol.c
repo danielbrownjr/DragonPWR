@@ -2,6 +2,16 @@
 #include "dp_meter_protocol.h"
 #include <assert.h>
 #include <math.h>
+typedef struct { unsigned calls, fail_at; bool change; } fake_t;
+static bool fake_read(void *ctx, uint8_t reg, size_t width, uint32_t *value)
+{
+    fake_t *f = ctx;
+    uint8_t req[2];
+    assert(dp_meter_request(reg, width, req));
+    if (++f->calls == f->fail_at) return false;
+    *value = (reg == 0 && f->change && f->calls > 11) ? 1u : reg;
+    return true;
+}
 int main(void)
 {
     uint8_t req[2];
@@ -102,5 +112,20 @@ int main(void)
     assert(dp_meter_freshness(DP_METER_UNAVAILABLE, 0, 3000101) == DP_METER_UNAVAILABLE);
     s.status = DP_METER_STALE;
     assert(dp_meter_values(&s).power_reason);
+    fake_t fake = {0};
+    dp_meter_sweep(&s, fake_read, &fake);
+    assert(s.status == DP_METER_FRESH && fake.calls == 15);
+    for (unsigned i = 1; i <= 15; ++i) {
+        fake = (fake_t){.fail_at = i};
+        dp_meter_sweep(&s, fake_read, &fake);
+        assert(s.status == DP_METER_INVALID && fake.calls == i);
+        assert(dp_meter_values(&s).voltage_reason);
+        fake = (fake_t){0};
+        dp_meter_sweep(&s, fake_read, &fake);
+        assert(s.status == DP_METER_FRESH);
+    }
+    fake = (fake_t){.change = true};
+    dp_meter_sweep(&s, fake_read, &fake);
+    assert(s.status == DP_METER_INVALID);
     return 0;
 }
