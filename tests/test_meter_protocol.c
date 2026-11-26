@@ -47,9 +47,13 @@ int main(void)
     s.syscon ^= 1u << 9;
     v = dp_meter_values(&s);
     assert(v.current_reason && v.power_reason && !v.voltage_reason);
-    s.syscon = 0x0a05;
-    v = dp_meter_values(&s);
-    assert(v.current_reason && v.power_reason);
+    for (uint32_t gain = 4; gain <= 7; ++gain) {
+        s.syscon = 0x0a00u | gain;
+        v = dp_meter_values(&s);
+        assert(!v.current_reason && !v.power_reason);
+    }
+    s.syscon = 0x0a03;
+    assert(dp_meter_values(&s).current_reason);
     s.syscon = 0x0a04;
     s.power_coef = 0;
     assert(dp_meter_values(&s).power_reason);
@@ -57,6 +61,14 @@ int main(void)
     s.emucon = 0;
     assert(dp_meter_values(&s).power_reason);
     s.emucon = 0x0181;
+    s.emucon = 0;
+    s.emucon2 = 1;
+    v = dp_meter_values(&s);
+    assert(!v.voltage_reason && !v.current_reason && v.power_reason && v.frequency_reason);
+    assert(fabsf(v.voltage - 120) < 0.001f && fabsf(v.current - 1) < 0.001f);
+    s.emucon = 0x0181;
+    v = dp_meter_values(&s);
+    assert(!v.voltage_reason && !v.current_reason && v.power_reason && v.frequency_reason);
     s.emucon2 = 0;
     v = dp_meter_values(&s);
     assert(v.frequency_reason && v.voltage_reason && v.current_reason && v.power_reason);
@@ -64,6 +76,22 @@ int main(void)
     s.frequency_raw = 0;
     assert(dp_meter_values(&s).frequency_reason);
     s.frequency_raw = 7457;
+    s.voltage_coef = 0xffff;
+    assert(dp_meter_values(&s).voltage_reason);
+    s.voltage_coef = 6120;
+    s.current_coef = 0xffff;
+    assert(dp_meter_values(&s).current_reason);
+    s.current_coef = 2000;
+    s.power_coef = 0xffff;
+    assert(dp_meter_values(&s).power_reason);
+    s.power_coef = 102;
+    s.emucon = 0x0181 | (1u << 9);
+    assert(dp_meter_values(&s).voltage_reason);
+    s.emucon = 0x0181 | (1u << 4);
+    assert(dp_meter_values(&s).voltage_reason);
+    s.emucon = 0x0181 | (1u << 5);
+    assert(dp_meter_values(&s).current_reason);
+    s.emucon = 0x0181;
     s.status = DP_METER_INVALID;
     assert(dp_meter_values(&s).voltage_reason);
     s.status = DP_METER_FRESH;

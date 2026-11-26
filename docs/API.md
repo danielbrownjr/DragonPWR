@@ -131,14 +131,23 @@ voltage_coef, current_coef, power_coef and frequency. Raw power is an unsigned
 32-bit representation of a signed two's-complement register.
 
 Scaling requires observed ADC enable bits, factory-calibrated gain settings
-and nonzero coefficients. Power additionally requires PARUN. Frequency
-requires ZxEN and WaveEN, nonzero raw frequency and 45–65 Hz. The stock
-publication gate (voltage at least 10 V and qualified frequency) suppresses
-scaled voltage/current/power if it fails. Current below 0.01 A is reported as
+and coefficients other than 0 or 0xFFFF. Current PGA encodings 4–7 all
+represent 16x. DC_MODE and invalid VrefSel suppress scaling; disabled voltage
+or current high-pass filters suppress the corresponding RMS path and power.
+Power additionally requires PARUN and qualified frequency. Frequency requires
+ZxEN and WaveEN, nonzero raw frequency and 45–65 Hz. With frequency acquisition
+enabled, the stock publication gate (voltage at least 10 V and qualified
+frequency) applies to voltage/current/power. When frequency is explicitly
+disabled by configuration, qualified RMS voltage and current may be reported
+with voltage at least 10 V; power and frequency remain null. At documented
+reset defaults (SYSCON 0x0A04, EMUCON 0x0000, EMUCON2 0x0001), RMS telemetry
+is therefore possible but active power and frequency are unavailable. This
+is a datasheet-derived expectation, not a hardware acceptance result. Current below 0.01 A is reported as
 zero, with power also zero when otherwise qualified. BTT board factors
 (K1=1, K2=0.51) are recovered from stock firmware, not reference-calibrated.
 
 Reasons include adc_disabled, unsupported_gain, zero_coefficient,
+uncalibrated_coefficient, invalid_reference, dc_mode, hpf_disabled,
 parun_disabled, frequency_disabled, no_frequency, frequency_out_of_range,
 voltage_unqualified, voltage_below_10v, frequency_unqualified, unavailable,
 invalid, stale and not_implemented. A numeric zero is distinct from null.
@@ -232,8 +241,8 @@ character means on. Returns plain text `ok` on success.
 
 ### `GET /update_ele_data`
 
-Returns the stock field set. Until `dp_meter` lands, the meter fields are
-compatibility zeros. `power_state` and `usb_state` are numeric controller
+Returns the stock field set. In this increment, the meter fields remain
+compatibility zeros (not measurements). `power_state` and `usb_state` are numeric controller
 states on V1 and `null` on V2:
 
 - `countdown_state`

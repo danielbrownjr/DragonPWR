@@ -59,6 +59,7 @@ static const char *rms_reason(uint32_t syscon, uint32_t enable,
     if (!(syscon & enable)) return "adc_disabled";
     if ((syscon & mask) != gain) return "unsupported_gain";
     if (!coef) return "zero_coefficient";
+    if (coef == 0xffffu) return "uncalibrated_coefficient";
     return NULL;
 }
 
@@ -79,8 +80,19 @@ dp_meter_values_t dp_meter_values(const dp_meter_snapshot_t *s)
     const float k2 = 0.51f;
     v.voltage_reason = rms_reason(s->syscon, 1u << 11, 0x38u, 0,
                                   s->voltage_coef);
-    v.current_reason = rms_reason(s->syscon, 1u << 9, 7u, 4u,
+    v.current_reason = rms_reason(s->syscon, 1u << 9, 4u, 4u,
                                   s->current_coef);
+    const char *common = !(s->emucon2 & 1u) ? "invalid_reference" :
+                         (s->emucon & (1u << 9)) ? "dc_mode" : NULL;
+    if (common) {
+        v.voltage_reason = v.current_reason = v.power_reason =
+            v.frequency_reason = common;
+        return v;
+    }
+    if (!v.voltage_reason && (s->emucon & (1u << 4)))
+        v.voltage_reason = "hpf_disabled";
+    if (!v.current_reason && (s->emucon & (1u << 5)))
+        v.current_reason = "hpf_disabled";
     if (!v.voltage_reason)
         v.voltage = rms(s->voltage_raw) * s->voltage_coef / 4194304.0f / k2 / 100.0f;
     if (!v.current_reason) {
@@ -92,6 +104,7 @@ dp_meter_values_t dp_meter_values(const dp_meter_snapshot_t *s)
     v.power_reason = v.voltage_reason ? v.voltage_reason : v.current_reason;
     if (!v.power_reason && !(s->emucon & 1u)) v.power_reason = "parun_disabled";
     if (!v.power_reason && !s->power_coef) v.power_reason = "zero_coefficient";
+    if (!v.power_reason && s->power_coef == 0xffffu) v.power_reason = "uncalibrated_coefficient";
     if (!v.power_reason) {
         // Explicit sign extension without implementation-defined unsigned cast.
         int64_t signed_raw = (int64_t)s->power_raw;
@@ -108,15 +121,19 @@ dp_meter_values_t dp_meter_values(const dp_meter_snapshot_t *s)
         if (v.frequency < 45.0f || v.frequency > 65.0f)
             v.frequency_reason = "frequency_out_of_range";
     }
-    // Stock's publication gate; unknown frequency is not proof of mains.
-    // Keep raw diagnostics even when scaling is suppressed.
+    // Reset defaults disable frequency acquisition. Permit qualified RMS
+    // without frequency only when configuration explicitly disables it.
+    // An enabled but invalid frequency still suppresses scaled values.
     const char *gate = v.voltage_reason ? "voltage_unqualified" :
                        v.voltage < 10.0f ? "voltage_below_10v" :
-                       v.frequency_reason ? "frequency_unqualified" : NULL;
+                       (s->emucon2 & 0x24u) == 0x24u && v.frequency_reason ?
+                           "frequency_unqualified" : NULL;
     if (gate) {
         if (!v.voltage_reason) v.voltage_reason = gate;
         if (!v.current_reason) v.current_reason = gate;
         if (!v.power_reason) v.power_reason = gate;
     }
+    if (!v.power_reason && v.frequency_reason)
+        v.power_reason = "frequency_unqualified";
     return v;
 }
