@@ -56,7 +56,16 @@ Current Phase 1 state:
   "boot_id": "boot-session-identifier",
   "outputs": {"mains": false, "usb1": false},
   "restore": "off",
-  "meter": null,
+  "meter": {
+    "status": "unavailable",
+    "voltage": null, "current": null, "power": null, "frequency": null,
+    "energy": null,
+    "reasons": {
+      "voltage": "unavailable", "current": "unavailable",
+      "power": "unavailable", "frequency": "unavailable",
+      "energy": "not_implemented"
+    }
+  },
   "printer": null,
   "heap": {
     "free": 0,
@@ -95,9 +104,65 @@ When the PWR service is unavailable, the lease helper conservatively reports
 service state rather than proof of an active lease.
 Neither target reports physical contact or voltage through these fields.
 
-Heap values are bytes. `meter` and `printer` are deliberately `null` until
-those features exist so clients can distinguish "not implemented" from a real
-zero reading.
+Heap values are bytes. V2 always returns `meter: null`; printer remains null
+on both targets.
+
+#### V1 meter telemetry
+
+The HLW8112 is read-only. No meter reset, configuration or calibration writes
+are performed. The object contains:
+
+| Field | Meaning |
+|---|---|
+| status | unavailable before the first poll or if startup fails; invalid after a failed transaction or changing configuration; stale when a successful snapshot is older than 3 seconds; fresh after a complete validated sweep |
+| voltage | V RMS or null |
+| current | A RMS or null |
+| power | signed active W or null |
+| frequency | Hz or null |
+| energy | always null in this increment |
+| reasons | keyed reason strings for null measurement fields |
+| raw | only present for fresh sweeps; unsigned register values and factory coefficients |
+
+Fresh describes transport/configuration consistency, not metrological validity.
+The driver reads control registers before and after the sweep, but the chip's
+individual registers are sampled sequentially, not latched simultaneously.
+The raw keys are syscon, emucon, hfconst, emucon2, voltage, current, power,
+voltage_coef, current_coef, power_coef and frequency. Raw power is an unsigned
+32-bit representation of a signed two's-complement register.
+
+Scaling requires observed ADC enable bits, factory-calibrated gain settings
+and coefficients other than 0 or 0xFFFF. Current PGA encodings 4–7 all
+represent 16x. DC_MODE and invalid VrefSel suppress scaling; disabled voltage
+or current high-pass filters suppress the corresponding RMS path and power.
+Power additionally requires PARUN and qualified frequency. Frequency requires
+ZxEN and WaveEN, nonzero raw frequency and 45–65 Hz. With frequency acquisition
+enabled, the stock publication gate (voltage at least 10 V and qualified
+frequency) applies to voltage/current/power. When frequency is explicitly
+disabled by configuration, qualified RMS voltage and current may be reported
+with voltage at least 10 V; power and frequency remain null. At documented
+reset defaults (SYSCON 0x0A04, EMUCON 0x0000, EMUCON2 0x0001), RMS telemetry
+is therefore possible but active power and frequency are unavailable. This
+is a datasheet-derived expectation, not a hardware acceptance result. Current below 0.01 A is reported as
+zero, with power also zero when otherwise qualified. BTT board factors
+(K1=1, K2=0.51) are recovered from stock firmware, not reference-calibrated.
+
+Reasons include adc_disabled, unsupported_gain, zero_coefficient,
+uncalibrated_coefficient, invalid_reference, dc_mode, hpf_disabled,
+parun_disabled, frequency_disabled, no_frequency, frequency_out_of_range,
+voltage_unqualified, voltage_below_10v, frequency_unqualified, unavailable,
+invalid, stale and not_implemented. A numeric zero is distinct from null.
+Polls sleep one second between sweeps; the 80 ms per-read timeout is rounded
+up to ticks. A 5 ms trailing-byte guard (also rounded up to ticks) rejects
+extra bytes before the next request. Failure aborts the sweep and the next
+attempt follows a one-second sleep and RX flush. Arbitrarily delayed frames
+and UART parity/framing error events are not independently excluded by this
+protocol; checksum validation is not a substitute for electrical qualification.
+No energy or clear-on-read interrupt registers are accessed.
+No metering-based power policy is implemented.
+
+The legacy stock route still uses compatibility zeros, not measurements;
+clients requiring valid telemetry must use the native state route. Hardware
+accuracy, memory headroom and cold-start meter behavior remain unqualified.
 
 ### `GET /api/v2/logs`
 
@@ -181,8 +246,8 @@ character means on. Returns plain text `ok` on success.
 
 ### `GET /update_ele_data`
 
-Returns the stock field set. Until `dp_meter` lands, the meter fields are
-compatibility zeros. `power_state` and `usb_state` are numeric controller
+Returns the stock field set. In this increment, the meter fields remain
+compatibility zeros (not measurements). `power_state` and `usb_state` are numeric controller
 states on V1 and `null` on V2:
 
 - `countdown_state`

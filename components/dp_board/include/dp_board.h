@@ -69,8 +69,8 @@
 // --- Energy meter ----------------------------------------------------------
 // Register-based metering IC. Framing is [0xA5][reg | 0x80 for writes][data...]
 // [~sum]; register 0xEA gates writes (0xE5 unlocks, 0xDC re-locks). The part
-// number is NOT established - see docs/HARDWARE_ANALYSIS.md before writing a
-// driver against the register map.
+// number is HLW8112, confirmed by teardown and stock analysis. See
+// docs/METERING_REVERSE_ENGINEERING.md.
 #define DP_PIN_METER_TX          GPIO_NUM_2
 #define DP_PIN_METER_RX          GPIO_NUM_3
 #define DP_METER_UART            UART_NUM_1

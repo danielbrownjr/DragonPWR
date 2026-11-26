@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "dp_portal.h"
+#include "dp_meter.h"
+#include "dp_meter_json.h"
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -345,9 +347,18 @@ static esp_err_t state_get(httpd_req_t *req)
     cJSON_AddStringToObject(root, "restore",
                             dp_restore_to_str(dp_relay_get_restore()));
 #endif
-    // No meter and no printer source yet; both are declared null rather than
-    // zeroed so a client can tell "not implemented" from "measured zero".
-    cJSON_AddNullToObject(root, "meter");
+    // V1 metering is observational; V2 has no qualified meter driver.
+#if defined(CONFIG_IDF_TARGET_ESP32C2)
+    dp_meter_snapshot_t sample = dp_meter_snapshot();
+    cJSON *meter = dp_meter_json(&sample);
+#else
+    cJSON *meter = dp_meter_json(NULL);
+#endif
+    if (!meter || !cJSON_AddItemToObject(root, "meter", meter)) {
+        cJSON_Delete(meter);
+        cJSON_Delete(root);
+        return send_error(req, "500 Internal Server Error", "meter serialization failed");
+    }
     cJSON_AddNullToObject(root, "printer");
 
     // Headroom for whatever comes next - a TLS printer client is the obvious
