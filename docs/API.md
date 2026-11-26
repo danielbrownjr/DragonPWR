@@ -200,6 +200,39 @@ The recovered stock metering field semantics are documented in
 
 ## Experimental routes (C3 lab builds only)
 
+### `POST /api/v2/experimental/power` (C3 lab build only)
+
+The opt-in V2 laboratory image exposes an **explicitly human-monitored**
+software ON/OFF control using the existing GPIO7 driver and independent
+deadline scheduler. The normal C3 build does not compile this route or
+advertise `experimental_power`; it continues to reject ordinary `/set` and
+`/api/v2/command` switching.
+
+Requires a **configured** control token in `X-Dragon-Auth` or
+`X-DragonBreath-Auth` and `X-Dragon-Lab-Confirm: GPIO7-HUMAN-MONITORED`.
+The local `/power` page exposes a separate, clearly labeled laboratory
+button only when `experimental_power` is advertised. Do not connect an
+unattended printer or load.
+
+- `{"on":true,"duration_ms":300000}` requests GPIO7 HIGH for at most
+  300,000 ms (five minutes). Duration is required and must be an integer
+  between 100 and 300,000 ms. Repeated ON while already ON is refused
+  rather than silently extending the deadline.
+- `{"on":false}` requests release of GPIO7 to input mode, including
+  after model FAULT or an expired deadline.
+- A successful response is the usual V2 software state snapshot,
+  retaining `outputs.mains: null`, `physical_ac_state: null`. A driver
+  error may latch software FAULT; neither success nor expiry proves the
+  contacts are open.
+
+This is a **lab-only power button candidate**, not production-qualified
+output switching. A missed poll, stuck callback, reset while HIGH, shared
+provisioning reboot, or lost GPIO7 lease can still leave physical state
+unknown. Use a human-monitored, independently disconnectable setup only,
+subject to separate operator authorization.
+
+
+
 ### `POST /api/v2/experimental/gpio7` (C3 lab builds only)
 
 Only compiled with `CONFIG_DP_V2_GPIO7_EXPERIMENT=y`. Requires an actually

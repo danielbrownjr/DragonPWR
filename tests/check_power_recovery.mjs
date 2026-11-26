@@ -8,10 +8,11 @@ const js=[...html.matchAll(/<script(?:[^>]*)>([\s\S]*?)<\/script>/g)].at(-1)?.[1
 assert.ok(js,'embedded controller exists');
 new Function(js);
 
-function harness({v2=false,noSlot=false}={}){
+function harness({v2=false,noSlot=false,lab=false}={}){
   const nodes=new Map(),events=new Map(),timers=[],posts=[];
   const counts={info:0,state:0};
   let boot='A',infoBoot=null,mains=v2?null:false,slot=!noSlot;
+  let pwr=lab?{enabled:false,requested_state:'off',lab_gpio7_active:false,physical_ac_state:null}:null;
   let confirmHandler=()=>true,promptHandler=()=>null,responseHandler=()=>({status:200,ok:true,body:{ok:true}});
   let holdInfo=null;
   const doc={getElementById(id){
@@ -21,15 +22,21 @@ function harness({v2=false,noSlot=false}={}){
   const fetch=async(path,opts={})=>{
     if(path==='/api/v2/state'){
       counts.state++;
-      return {ok:true,json:async()=>({boot_id:boot,outputs:{mains,usb1:v2?null:false},heap:{free:10240}})};
+      return {ok:true,json:async()=>({boot_id:boot,outputs:{mains,usb1:v2?null:false},heap:{free:10240},...(pwr?{pwr_control:{...pwr}}:{})})};
     }
     if(path==='/api/v2/info'){
       counts.info++;
       if(holdInfo)return await holdInfo;
       const returnedBoot=infoBoot??boot;
       return {ok:true,json:async()=>({boot_id:returnedBoot,firmware:'test',device_id:'device',
-        capabilities:v2?['polling']:['polling','power_switch','usb_switch'],
+        capabilities:v2?['polling',...(lab?['experimental_power']:[])]:['polling','power_switch','usb_switch'],
         ...(slot?{inactive_slot:{label:'ota_1',project:'dragonpwr',version:'1.0'}}:{})})};
+    }
+    if(path==='/api/v2/experimental/power'){
+      posts.push({path,opts,boot});
+      const {on}=JSON.parse(opts.body);
+      pwr={...pwr,enabled:on,requested_state:on?'on':'off'};
+      return {status:200,ok:true,json:async()=>({boot_id:boot,pwr_control:{...pwr},outputs:{mains:null,usb1:null}})};
     }
     if(path==='/api/v2/restart'||path==='/api/v2/boot-inactive'){
       posts.push({path,opts,boot});
@@ -44,7 +51,7 @@ function harness({v2=false,noSlot=false}={}){
     doc,localStorage,fetch,fn=>timers.push(fn),()=>promptHandler(),()=>confirmHandler());
   const node=id=>nodes.get(id);
   return {
-    node,counts,posts,
+    node,counts,posts,setPwr:p=>{pwr={...pwr,...p}},
     setBoot:b=>{boot=b},setInfoBoot:b=>{infoBoot=b},setMains:b=>{mains=b},setSlot:b=>{slot=b},
     onConfirm:fn=>{confirmHandler=fn},onPrompt:fn=>{promptHandler=fn},onResponse:fn=>{responseHandler=fn},
     holdNextInfo:promise=>{holdInfo=promise},clearHold:()=>{holdInfo=null},
@@ -146,6 +153,31 @@ async function testPendingInfoAndMismatch(){
   mismatch.setBoot('C');mismatch.setInfoBoot('D');await mismatch.poll();
   assert.equal(mismatch.node('restart-button').disabled,true,'mixed boot snapshots fail closed');
 }
+async function testLabDisarm(){
+  const h=harness({v2:true,lab:true});await h.settle();
+  assert.equal(h.node('lab-power-panel').hidden,false);
+  assert.match(h.node('lab-power-state').textContent,/OFF \(disarmed\)/);
+  assert.match(h.node('lab-power-button').textContent,/Request GPIO7 ON/);
+  h.click('lab-power-button');await h.settle();
+  assert.equal(JSON.parse(h.posts[0].opts.body).on,true);
+  assert.match(h.node('lab-power-button').textContent,/OFF \/ disarm/);
+  // Deadline expires: model remains enabled, but the requested state is OFF.
+  h.setPwr({enabled:true,requested_state:'off'});await h.poll();
+  assert.match(h.node('lab-power-state').textContent,/OFF \(armed\)/);
+  assert.match(h.node('lab-power-button').textContent,/OFF \/ disarm/);
+  h.onConfirm(()=>{throw Error('disarm must not prompt for ON')});
+  h.click('lab-power-button');await h.settle();
+  assert.deepEqual(JSON.parse(h.posts[1].opts.body),{on:false});
+  assert.match(h.node('lab-power-state').textContent,/OFF \(disarmed\)/);
+  assert.match(h.node('lab-power-button').textContent,/Request GPIO7 ON/);
+  // FAULT must still offer OFF even if the model is disabled.
+  h.setPwr({enabled:false,requested_state:'fault'});await h.poll();
+  assert.match(h.node('lab-power-button').textContent,/Retry GPIO7 OFF/);
+  h.click('lab-power-button');await h.settle();
+  assert.deepEqual(JSON.parse(h.posts[2].opts.body),{on:false});
+  assert.equal(h.node('restart-button').disabled,true,'unknown physical state remains gated');
+}
+await testLabDisarm();
 await testNormalAndV2();
 await testDialogsAndConcurrency();
 await testPendingInfoAndMismatch();

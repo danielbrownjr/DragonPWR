@@ -298,6 +298,10 @@ static esp_err_t info_get(httpd_req_t *req)
     cJSON_AddItemToArray(caps, cJSON_CreateString("power_switch"));
     cJSON_AddItemToArray(caps, cJSON_CreateString("usb_switch"));
 #endif
+#if defined(CONFIG_IDF_TARGET_ESP32C3) && defined(CONFIG_DP_V2_GPIO7_EXPERIMENT)
+    // Distinct lab capability, never the normal power_switch capability.
+    cJSON_AddItemToArray(caps, cJSON_CreateString("experimental_power"));
+#endif
     cJSON_AddItemToArray(caps, cJSON_CreateString("polling"));
 
     cJSON *ui = cJSON_AddObjectToObject(root, "ui");
@@ -478,6 +482,49 @@ static esp_err_t experimental_gpio7_post(httpd_req_t *req)
     cJSON_AddNullToObject(result, "physical_ac_state");
     return send_json(req, result);
 }
+
+static esp_err_t experimental_power_post(httpd_req_t *req)
+{
+    char stored[DP_TOKEN_MAX + 1] = {0};
+    if (!token_read(stored, sizeof(stored)) || !stored[0] || !authorize(req, NULL)) {
+        return send_error(req, "403 Forbidden", "configured control token required");
+    }
+    char confirm[48] = {0};
+    if (httpd_req_get_hdr_value_str(req, "X-Dragon-Lab-Confirm",
+                                    confirm, sizeof(confirm)) != ESP_OK ||
+        strcmp(confirm, "GPIO7-HUMAN-MONITORED") != 0) {
+        return send_error(req, "403 Forbidden", "lab acknowledgement required");
+    }
+    char body[128];
+    if (recv_body(req, body, sizeof(body)) < 0) {
+        return send_error(req, "400 Bad Request", "JSON body required");
+    }
+    cJSON *json = cJSON_Parse(body);
+    if (!json) return send_error(req, "400 Bad Request", "invalid JSON");
+    const cJSON *on = cJSON_GetObjectItemCaseSensitive(json, "on");
+    const cJSON *ms = cJSON_GetObjectItemCaseSensitive(json, "duration_ms");
+    const bool wants_on = cJSON_IsTrue(on);
+    const bool valid = cJSON_IsBool(on) &&
+        (!wants_on || (cJSON_IsNumber(ms) && ms->valuedouble >= 100.0 &&
+                       ms->valuedouble <= 300000.0 &&
+                       ms->valuedouble == (double)ms->valueint));
+    const uint32_t duration = wants_on && valid ? (uint32_t)ms->valueint : 0;
+    cJSON_Delete(json);
+    if (!valid) {
+        return send_error(req, "400 Bad Request",
+                          "on must be boolean; ON needs integer duration_ms 100..300000");
+    }
+    const dp_v2_pwr_result_t result = dp_v2_pwr_service_lab_command(wants_on, duration);
+    if (result == DP_V2_PWR_INVALID || result == DP_V2_PWR_UNAVAILABLE) {
+        return send_error(req, "409 Conflict", "lab power command unavailable or invalid");
+    }
+    if (result != DP_V2_PWR_OK) {
+        return send_error(req, "500 Internal Server Error", "GPIO7 command failed; software FAULT possible");
+    }
+    // Only requested software state is returned; physical output is unknown.
+    return state_get(req);
+}
+
 #endif
 
 // ------------------------------------------- stock-compatible API surface
@@ -920,6 +967,7 @@ static const httpd_uri_t ROUTES[] = {
     { .uri = "/api/v2/command",    .method = HTTP_POST, .handler = command_post },
 #if defined(CONFIG_IDF_TARGET_ESP32C3) && defined(CONFIG_DP_V2_GPIO7_EXPERIMENT)
     { .uri = "/api/v2/experimental/gpio7", .method = HTTP_POST, .handler = experimental_gpio7_post },
+    { .uri = "/api/v2/experimental/power", .method = HTTP_POST, .handler = experimental_power_post },
 #endif
     { .uri = "/api/v2/token",      .method = HTTP_POST, .handler = token_post },
     { .uri = "/api/v2/restart",       .method = HTTP_POST, .handler = restart_post },
