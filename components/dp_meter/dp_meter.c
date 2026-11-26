@@ -12,17 +12,32 @@ static portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;
 static dp_meter_snapshot_t latest;
 static bool started;
 
+static bool flush_rx(void *ctx)
+{
+    (void)ctx;
+    return uart_flush_input(DP_METER_UART) == ESP_OK;
+}
+
+static bool send_request(void *ctx, const uint8_t *bytes, size_t count)
+{
+    (void)ctx;
+    return uart_write_bytes(DP_METER_UART, bytes, count) == (int)count;
+}
+
+static int receive_reply(void *ctx, uint8_t *bytes, size_t count, unsigned timeout_ms)
+{
+    (void)ctx;
+    return uart_read_bytes(DP_METER_UART, bytes, count,
+                           pdMS_TO_TICKS(timeout_ms) + 1);
+}
+
 static bool read_reg(void *ctx, uint8_t reg, size_t width, uint32_t *value)
 {
     (void)ctx;
-    uint8_t req[2], reply[5];
-    if (!dp_meter_request(reg, width, req)) return false;
-    if (uart_flush_input(DP_METER_UART) != ESP_OK) return false;
-    if (uart_write_bytes(DP_METER_UART, req, sizeof(req)) != (int)sizeof(req))
-        return false;
-    int n = uart_read_bytes(DP_METER_UART, reply, width + 1,
-                            pdMS_TO_TICKS(80) + 1);
-    return n >= 0 && dp_meter_decode(reg, width, reply, (size_t)n, value);
+    const dp_meter_io_t io = {
+        .flush = flush_rx, .send = send_request, .receive = receive_reply,
+    };
+    return dp_meter_transaction(&io, reg, width, value);
 }
 
 static void meter_task(void *arg)

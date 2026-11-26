@@ -141,25 +141,39 @@ dp_meter_values_t dp_meter_values(const dp_meter_snapshot_t *s)
 void dp_meter_sweep(dp_meter_snapshot_t *s, dp_meter_read_fn read, void *ctx)
 {
     *s = (dp_meter_snapshot_t){0};
-        bool ok =
-            read(ctx, 0x00, 2, &s->syscon) &&
-            read(ctx, 0x01, 2, &s->emucon) &&
-            read(ctx, 0x02, 2, &s->hfconst) &&
-            read(ctx, 0x13, 2, &s->emucon2) &&
-            read(ctx, 0x72, 2, &s->voltage_coef) &&
-            read(ctx, 0x70, 2, &s->current_coef) &&
-            read(ctx, 0x73, 2, &s->power_coef) &&
-            read(ctx, 0x26, 3, &s->voltage_raw) &&
-            read(ctx, 0x24, 3, &s->current_raw) &&
-            read(ctx, 0x2c, 4, &s->power_raw) &&
-            read(ctx, 0x23, 2, &s->frequency_raw);
-        // Recheck configuration to reject a reset/change during the sweep.
-        uint32_t syscon, emucon, hfconst, emucon2;
-        ok = ok && read(ctx, 0x00, 2, &syscon) &&
-            read(ctx, 0x01, 2, &emucon) && read(ctx, 0x02, 2, &hfconst) &&
-            read(ctx, 0x13, 2, &emucon2) &&
-            syscon == s->syscon && emucon == s->emucon &&
-            hfconst == s->hfconst && emucon2 == s->emucon2;
-        s->status = ok ? DP_METER_FRESH : DP_METER_INVALID;
+     bool ok =
+         read(ctx, 0x00, 2, &s->syscon) &&
+         read(ctx, 0x01, 2, &s->emucon) &&
+         read(ctx, 0x02, 2, &s->hfconst) &&
+         read(ctx, 0x13, 2, &s->emucon2) &&
+         read(ctx, 0x72, 2, &s->voltage_coef) &&
+         read(ctx, 0x70, 2, &s->current_coef) &&
+         read(ctx, 0x73, 2, &s->power_coef) &&
+         read(ctx, 0x26, 3, &s->voltage_raw) &&
+         read(ctx, 0x24, 3, &s->current_raw) &&
+         read(ctx, 0x2c, 4, &s->power_raw) &&
+         read(ctx, 0x23, 2, &s->frequency_raw);
+     // Recheck configuration to reject a reset/change during the sweep.
+     uint32_t syscon, emucon, hfconst, emucon2;
+     ok = ok && read(ctx, 0x00, 2, &syscon) &&
+         read(ctx, 0x01, 2, &emucon) && read(ctx, 0x02, 2, &hfconst) &&
+         read(ctx, 0x13, 2, &emucon2) &&
+         syscon == s->syscon && emucon == s->emucon &&
+         hfconst == s->hfconst && emucon2 == s->emucon2;
+     s->status = ok ? DP_METER_FRESH : DP_METER_INVALID;
+}
 
+bool dp_meter_transaction(const dp_meter_io_t *io, uint8_t reg,
+                          size_t width, uint32_t *value)
+{
+    uint8_t req[2], reply[5], extra;
+    if (!dp_meter_request(reg, width, req) || !value) return false;
+    if (!io->flush(io->ctx) || !io->send(io->ctx, req, sizeof(req))) return false;
+    int n = io->receive(io->ctx, reply, width + 1, 80);
+    if (n != (int)(width + 1)) return false;
+    // Reject trailing bytes within a short guard window before another request.
+    // A failed transaction aborts the sweep; the task waits one second before
+    // flushing and retrying. This is not a guarantee against arbitrary delays.
+    if (io->receive(io->ctx, &extra, 1, 5) != 0) return false;
+    return dp_meter_decode(reg, width, reply, (size_t)n, value);
 }

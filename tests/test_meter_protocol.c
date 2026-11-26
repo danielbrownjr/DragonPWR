@@ -12,6 +12,38 @@ static bool fake_read(void *ctx, uint8_t reg, size_t width, uint32_t *value)
     *value = (reg == 0 && f->change && f->calls > 11) ? 1u : reg;
     return true;
 }
+typedef struct {
+    unsigned step;
+    bool flush_fail, send_fail, extra;
+    int reply_count;
+    uint8_t checksum;
+} mock_io_t;
+
+static bool mock_flush(void *ctx)
+{
+    mock_io_t *m = ctx;
+    assert(m->step++ == 0);
+    return !m->flush_fail;
+}
+static bool mock_send(void *ctx, const uint8_t *bytes, size_t count)
+{
+    mock_io_t *m = ctx;
+    assert(m->step++ == 1 && count == 2);
+    assert(bytes[0] == 0xa5 && bytes[1] == 0x26);
+    return !m->send_fail;
+}
+static int mock_receive(void *ctx, uint8_t *bytes, size_t count, unsigned ms)
+{
+    mock_io_t *m = ctx;
+    if (m->step++ == 2) {
+        assert(count == 4 && ms == 80);
+        bytes[0] = 1; bytes[1] = 2; bytes[2] = 3; bytes[3] = m->checksum;
+        return m->reply_count;
+    }
+    assert(m->step == 4 && count == 1 && ms == 5);
+    if (m->extra) bytes[0] = 0xff;
+    return m->extra ? 1 : 0;
+}
 int main(void)
 {
     uint8_t req[2];
@@ -112,6 +144,25 @@ int main(void)
     assert(dp_meter_freshness(DP_METER_UNAVAILABLE, 0, 3000101) == DP_METER_UNAVAILABLE);
     s.status = DP_METER_STALE;
     assert(dp_meter_values(&s).power_reason);
+    mock_io_t mock = {.reply_count=4, .checksum=0x2e};
+    const dp_meter_io_t io = {.ctx=&mock, .flush=mock_flush,
+        .send=mock_send, .receive=mock_receive};
+    assert(dp_meter_transaction(&io, 0x26, 3, &value) && value == 0x010203);
+    mock = (mock_io_t){.reply_count=0};
+    assert(!dp_meter_transaction(&io, 0x26, 3, &value) && mock.step == 3);
+    mock = (mock_io_t){.reply_count=2};
+    assert(!dp_meter_transaction(&io, 0x26, 3, &value));
+    mock = (mock_io_t){.reply_count=4, .checksum=0x2f};
+    assert(!dp_meter_transaction(&io, 0x26, 3, &value));
+    mock = (mock_io_t){.reply_count=4, .checksum=0x2e, .extra=true};
+    assert(!dp_meter_transaction(&io, 0x26, 3, &value));
+    mock = (mock_io_t){.flush_fail=true};
+    assert(!dp_meter_transaction(&io, 0x26, 3, &value) && mock.step == 1);
+    mock = (mock_io_t){.send_fail=true};
+    assert(!dp_meter_transaction(&io, 0x26, 3, &value) && mock.step == 2);
+    assert(value == 0x010203);
+    mock = (mock_io_t){.reply_count=4, .checksum=0x2e};
+    assert(dp_meter_transaction(&io, 0x26, 3, &value));
     fake_t fake = {0};
     dp_meter_sweep(&s, fake_read, &fake);
     assert(s.status == DP_METER_FRESH && fake.calls == 15);

@@ -152,7 +152,12 @@ parun_disabled, frequency_disabled, no_frequency, frequency_out_of_range,
 voltage_unqualified, voltage_below_10v, frequency_unqualified, unavailable,
 invalid, stale and not_implemented. A numeric zero is distinct from null.
 Polls sleep one second between sweeps; the 80 ms per-read timeout is rounded
-up to ticks. No energy or clear-on-read interrupt registers are accessed.
+up to ticks. A 5 ms trailing-byte guard (also rounded up to ticks) rejects
+extra bytes before the next request. Failure aborts the sweep and the next
+attempt follows a one-second sleep and RX flush. Arbitrarily delayed frames
+and UART parity/framing error events are not independently excluded by this
+protocol; checksum validation is not a substitute for electrical qualification.
+No energy or clear-on-read interrupt registers are accessed.
 No metering-based power policy is implemented.
 
 The legacy stock route still uses compatibility zeros, not measurements;

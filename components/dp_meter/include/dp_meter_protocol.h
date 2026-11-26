@@ -33,3 +33,12 @@ const char *dp_meter_status_name(dp_meter_status_t status);
 
 typedef bool (*dp_meter_read_fn)(void *ctx, uint8_t reg, size_t width, uint32_t *value);
 void dp_meter_sweep(dp_meter_snapshot_t *s, dp_meter_read_fn read, void *ctx);
+
+typedef struct {
+    void *ctx;
+    bool (*flush)(void *ctx);
+    bool (*send)(void *ctx, const uint8_t *bytes, size_t count);
+    int (*receive)(void *ctx, uint8_t *bytes, size_t count, unsigned timeout_ms);
+} dp_meter_io_t;
+bool dp_meter_transaction(const dp_meter_io_t *io, uint8_t reg,
+                          size_t width, uint32_t *value);
