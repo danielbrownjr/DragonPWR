@@ -56,10 +56,10 @@ static int high_calls, low_calls;
 static jmp_buf exit_run;
 #if defined(CONFIG_DP_V2_GPIO7_EXPERIMENT)
 static int lab_high, lab_low;
-static bool lab_fail_off;
+static bool lab_fail_off, lab_fail_high;
 bool dp_v2_gpio7_drive(bool high, void *context) {
     (void)context;
-    if (high) { ++lab_high; return true; }
+    if (high) { ++lab_high; return !lab_fail_high; }
     ++lab_low;
     return !lab_fail_off;
 }
@@ -190,6 +190,22 @@ int main(void) {
     lab_fail_off = false;
     assert(dp_v2_pwr_service_lab_command(false, 0) == DP_V2_PWR_OK);
     assert(s_model.phase == DP_V2_PWR_OFF);
+    assert(dp_v2_pwr_service_maintenance_allowed());
+    // HIGH driver failure latches FAULT even if best-effort release succeeds.
+    const int before_high_failure = lab_high, before_release = lab_low;
+    lab_fail_high = true;
+    assert(dp_v2_pwr_service_lab_command(true, 100) == DP_V2_PWR_DRIVER_ERROR);
+    assert(lab_high == before_high_failure + 1);
+    assert(lab_low == before_release + 2); // initial OFF and best-effort release
+    assert(s_model.phase == DP_V2_PWR_FAULT && s_model.enabled);
+    assert(s_model.deadline_ms == 0);
+    assert(!dp_v2_pwr_service_maintenance_allowed());
+    assert(!dp_v2_pwr_service_lab_begin());
+    assert(dp_v2_pwr_service_lab_command(true, 100) == DP_V2_PWR_DRIVER_ERROR);
+    assert(lab_high == before_high_failure + 1);
+    lab_fail_high = false;
+    assert(dp_v2_pwr_service_lab_command(false, 0) == DP_V2_PWR_OK);
+    assert(s_model.phase == DP_V2_PWR_OFF && !s_model.enabled);
     assert(dp_v2_pwr_service_maintenance_allowed());
 #endif
     puts("dp_v2_pwr_service mutex contention: PASS");
