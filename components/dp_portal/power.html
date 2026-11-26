@@ -151,15 +151,16 @@ function draw(){
     info.capabilities.indexOf('experimental_power')!==-1);
   $('lab-power-panel').hidden=!lab;
   var pwr=state&&state.pwr_control;
-  var labOn=!!(pwr&&pwr.requested_state==='on');
+  var labNeedsOff=!!(pwr&&(pwr.enabled||pwr.requested_state!=='off'));
   $('lab-power-state').textContent=pwr?
-    'Software request: '+pwr.requested_state.toUpperCase()+'; physical outlet state UNKNOWN':
+    'Software request: '+pwr.requested_state.toUpperCase()+
+    (pwr.requested_state==='unavailable'?'':pwr.enabled?' (armed)':' (disarmed)')+
+    '; physical outlet state UNKNOWN':
     'Software status unavailable; physical outlet state UNKNOWN';
   $('lab-power-button').disabled=!lab||busy||maintenanceBusy||!pwr||
-    pwr.requested_state==='unavailable'||pwr.lab_gpio7_active||
-    (pwr.requested_state==='fault'&&labOn);
+    pwr.requested_state==='unavailable'||pwr.lab_gpio7_active;
   $('lab-power-button').textContent=pwr&&pwr.requested_state==='fault'?
-    'Retry GPIO7 OFF (FAULT)':labOn?'Request GPIO7 OFF':'Request GPIO7 ON (5 min max)';
+    'Retry GPIO7 OFF (FAULT)':labNeedsOff?'Request GPIO7 OFF / disarm':'Request GPIO7 ON (5 min max)';
   var h=state&&state.heap||{};
   $('free').textContent=memory(h.free);$('minimum').textContent=memory(h.min_free);
   $('largest').textContent=memory(h.largest_block);
@@ -302,7 +303,8 @@ function toggleLabPower(){
      !Array.isArray(info.capabilities)||
      info.capabilities.indexOf('experimental_power')===-1||
      p.lab_gpio7_active||p.requested_state==='unavailable')return;
-  var on=p.requested_state==='off';
+  // Deadline OFF leaves the model armed. Disarm without another HIGH request.
+  var on=!p.enabled&&p.requested_state==='off';
   if(on&&!confirm('LAB ONLY: request GPIO7 ON for up to 5 minutes? Physical outlet state is UNKNOWN. Requires a human-monitored isolated fixture and an independent upstream disconnect.'))return;
   busy=true;draw();
   $('lab-power-message').textContent='Sending lab command…';
