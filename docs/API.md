@@ -330,3 +330,28 @@ blocks overlapping lab ownership. The response reports the commanded level
 and duration but `physical_ac_state: null`. This route is **not** a production
 power API or proof of safe reset/output isolation. See
 [V2 experimental switching](V2_EXPERIMENTAL_SWITCHING.md).
+
+### `GET /api/v2/diag/meter` (experimental V1 diagnostics)
+
+Public read-only LAN diagnostic, like native state; no control header required.
+V2 returns 404. This GET copies a bounded RAM snapshot;
+it does not issue UART requests, reset counters, write registers or alter outputs.
+Boot-local counters wrap modulo 2^32. The attempt, completed, success and
+failure timestamps are monotonic microseconds since boot (zero means no event).
+The attempt timestamp may be newer than the last completed snapshot. Counts
+and partial data are published at sweep completion. Stack high-water is the
+ESP-IDF task API's reported value. UART event counts are best-effort observations
+from a bounded 16-entry queue; saturation or disabled interrupt sources may
+lose events, and zero does not prove absence of framing/parity errors.
+Preflush bytes are observed buffered lengths, not guaranteed discarded counts.
+
+Transaction counters classify each attempted read. The retained last_failure
+records the latest failed sweep, including read_index (1–15, zero for a
+configuration mismatch), reason, bounded reply bytes, receive/guard result
+when attempted, expected checksum when computed, and observed configuration
+before/after. valid_mask bits 0–14 correspond to the existing read sequence;
+mismatch_mask bits 0–3 correspond to SYSCON, EMUCON, HFConst, EMUCON2.
+Missing configuration keys were not successfully read. These diagnostics
+are not qualified measurements. The native state meter validity and
+read-only allowlist remain unchanged. Instrumentation may perturb timing;
+compare behavior with the uninstrumented baseline.

@@ -10,7 +10,7 @@ import tempfile
 
 source = Path("components/dp_portal/dp_portal.c").read_text()
 begin = source.index("#define DP_HTTP_MAX_CLIENTS 4")
-end = source.index("// ------------------------------------------------------------------ routes", begin)
+end = source.index("// Meter diagnostics are a bounded RAM snapshot", begin)
 functions = source[begin:end]
 
 # Preserve the existing four-client policy and diagnostic route registration.

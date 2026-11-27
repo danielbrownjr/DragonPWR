@@ -971,6 +971,78 @@ static esp_err_t http_diag_get(httpd_req_t *req)
     return httpd_resp_sendstr(req, json);
 }
 
+// Meter diagnostics are a bounded RAM snapshot, never a hardware transaction.
+static esp_err_t meter_diag_get(httpd_req_t *req)
+{
+#if defined(CONFIG_IDF_TARGET_ESP32C2)
+    dp_meter_diag_t d = dp_meter_diagnostics();
+    const dp_meter_tx_diag_t *t = &d.last_failure;
+    const char *names[] = {"ok", "argument", "flush", "send", "rx_error",
+        "timeout", "length", "guard_error", "trailing", "checksum"};
+    cJSON *root = cJSON_CreateObject();
+    if (!root) goto fail;
+#define NUM(obj, key, value) do { if (!cJSON_AddNumberToObject(obj, key, value)) goto fail; } while (0)
+    NUM(root, "sweeps", d.sweeps);
+    NUM(root, "successful_sweeps", d.successful_sweeps);
+    NUM(root, "config_mismatches", d.config_mismatches);
+    NUM(root, "attempt_us", d.attempt_us);
+    NUM(root, "completed_us", d.completed_us);
+    NUM(root, "success_us", d.success_us);
+    NUM(root, "failure_us", d.failure_us);
+    NUM(root, "stack_high_water", d.stack_high_water);
+    NUM(root, "preflush_bytes", d.preflush_bytes);
+    NUM(root, "preflush_query_errors", d.preflush_query_errors);
+    NUM(root, "uart_parity_observed", d.uart_parity);
+    NUM(root, "uart_frame_observed", d.uart_frame);
+    NUM(root, "uart_fifo_overflow_observed", d.uart_fifo_overflow);
+    NUM(root, "uart_buffer_full_observed", d.uart_buffer_full);
+    cJSON *counts = cJSON_AddObjectToObject(root, "transactions");
+    if (!counts) goto fail;
+    for (unsigned i = 0; i < DP_METER_TX_COUNT; ++i) NUM(counts, names[i], d.transaction_counts[i]);
+    NUM(root, "valid_mask", d.sweep.valid_mask);
+    cJSON *f = cJSON_AddObjectToObject(root, "last_failure");
+    if (!f) goto fail;
+    NUM(f, "read_index", d.failed_read_index);
+    NUM(f, "valid_mask", d.failure_sweep.valid_mask);
+    NUM(f, "mismatch_mask", d.failure_sweep.mismatch_mask);
+    const char *reason = !d.failure_us ? "none" :
+        d.failure_sweep.mismatch_mask ? "config_mismatch" : names[t->result];
+    if (!cJSON_AddStringToObject(f, "reason", reason)) goto fail;
+    NUM(f, "register", t->reg);
+    NUM(f, "width", t->width);
+    if (t->receive_attempted) NUM(f, "received", t->received);
+    if (t->guard_attempted) {
+        NUM(f, "guard_result", t->guard_result);
+        if (t->guard_result == 1) NUM(f, "guard_byte", t->guard_byte);
+    }
+    if (t->checksum_available) NUM(f, "expected_checksum", t->expected_checksum);
+    cJSON *bytes = cJSON_AddArrayToObject(f, "reply");
+    if (!bytes) goto fail;
+    for (int i = 0; t->receive_attempted && i < t->received && i < 5; ++i) {
+        cJSON *byte = cJSON_CreateNumber(t->reply[i]);
+        if (!byte || !cJSON_AddItemToArray(bytes, byte)) { cJSON_Delete(byte); goto fail; }
+    }
+    const uint32_t initial[] = {d.failed_partial.syscon, d.failed_partial.emucon,
+        d.failed_partial.hfconst, d.failed_partial.emucon2};
+    const char *keys[] = {"syscon", "emucon", "hfconst", "emucon2"};
+    cJSON *before = cJSON_AddObjectToObject(f, "config_before");
+    cJSON *after = cJSON_AddObjectToObject(f, "config_after");
+    if (!before || !after) goto fail;
+    for (unsigned i = 0; i < 4; ++i) {
+        if (d.failure_sweep.valid_mask & (1u << i)) NUM(before, keys[i], initial[i]);
+        if (d.failure_sweep.valid_mask & (1u << (11+i))) NUM(after, keys[i], d.failure_sweep.reread[i]);
+    }
+#undef NUM
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    return send_json(req, root);
+fail:
+    cJSON_Delete(root);
+    return send_error(req, "500 Internal Server Error", "meter diagnostics serialization failed");
+#else
+    return send_error(req, "404 Not Found", "meter unavailable");
+#endif
+}
+
 // ------------------------------------------------------------------ routes
 
 static const httpd_uri_t ROUTES[] = {
@@ -979,6 +1051,7 @@ static const httpd_uri_t ROUTES[] = {
     { .uri = "/api/v2/state",      .method = HTTP_GET,  .handler = state_get },
     { .uri = "/api/v2/logs",       .method = HTTP_GET,  .handler = logs_get },
     { .uri = "/api/v2/diag/http",  .method = HTTP_GET,  .handler = http_diag_get },
+    { .uri = "/api/v2/diag/meter", .method = HTTP_GET,  .handler = meter_diag_get },
     { .uri = "/api/v2/events",     .method = HTTP_GET,  .handler = unsupported_events_get },
     { .uri = "/api/v2/command",    .method = HTTP_POST, .handler = command_post },
 #if defined(CONFIG_IDF_TARGET_ESP32C3) && defined(CONFIG_DP_V2_GPIO7_EXPERIMENT)

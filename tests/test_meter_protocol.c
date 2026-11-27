@@ -14,7 +14,7 @@ static bool fake_read(void *ctx, uint8_t reg, size_t width, uint32_t *value)
 }
 typedef struct {
     unsigned step;
-    bool flush_fail, send_fail, extra;
+    bool flush_fail, send_fail, extra, guard_error;
     int reply_count;
     uint8_t checksum;
 } mock_io_t;
@@ -42,7 +42,7 @@ static int mock_receive(void *ctx, uint8_t *bytes, size_t count, unsigned ms)
     }
     assert(m->step == 4 && count == 1 && ms == 5);
     if (m->extra) bytes[0] = 0xff;
-    return m->extra ? 1 : 0;
+    return m->guard_error ? -1 : m->extra ? 1 : 0;
 }
 int main(void)
 {
@@ -178,5 +178,47 @@ int main(void)
     fake = (fake_t){.change = true};
     dp_meter_sweep(&s, fake_read, &fake);
     assert(s.status == DP_METER_INVALID);
+    dp_meter_tx_diag_t tx;
+    mock = (mock_io_t){.reply_count=4, .checksum=0x2f};
+    assert(!dp_meter_transaction_observed(&io, 0x26, 3, &value, &tx));
+    assert(tx.result == DP_METER_TX_CHECKSUM && tx.received == 4 &&
+           tx.reply[3] == 0x2f && tx.expected_checksum == 0x2e);
+    mock = (mock_io_t){.reply_count=4, .checksum=0x2e, .extra=true};
+    assert(!dp_meter_transaction_observed(&io, 0x26, 3, &value, &tx));
+    assert(tx.result == DP_METER_TX_TRAILING && tx.guard_byte == 0xff);
+    mock = (mock_io_t){.reply_count=0};
+    assert(!dp_meter_transaction_observed(&io, 0x26, 3, &value, &tx));
+    assert(tx.result == DP_METER_TX_TIMEOUT && !tx.guard_attempted);
+    mock = (mock_io_t){.reply_count=-1};
+    assert(!dp_meter_transaction_observed(&io, 0x26, 3, &value, &tx));
+    assert(tx.result == DP_METER_TX_RX_ERROR);
+    mock = (mock_io_t){.reply_count=2};
+    assert(!dp_meter_transaction_observed(&io, 0x26, 3, &value, &tx));
+    assert(tx.result == DP_METER_TX_LENGTH);
+    mock = (mock_io_t){.flush_fail=true};
+    assert(!dp_meter_transaction_observed(&io, 0x26, 3, &value, &tx));
+    assert(tx.result == DP_METER_TX_FLUSH);
+    mock = (mock_io_t){.send_fail=true};
+    assert(!dp_meter_transaction_observed(&io, 0x26, 3, &value, &tx));
+    assert(tx.result == DP_METER_TX_SEND);
+    assert(!dp_meter_transaction_observed(&io, 0x42, 2, &value, &tx));
+    assert(tx.result == DP_METER_TX_ARGUMENT);
+    mock = (mock_io_t){.reply_count=4, .checksum=0x2e, .guard_error=true};
+    assert(!dp_meter_transaction_observed(&io, 0x26, 3, &value, &tx));
+    assert(tx.result == DP_METER_TX_GUARD_ERROR && tx.guard_result == -1);
+    dp_meter_sweep_diag_t diag;
+    for (unsigned i = 1; i <= 15; ++i) {
+        fake = (fake_t){.fail_at=i};
+        dp_meter_sweep_observed(&s, fake_read, &fake, &diag);
+        assert(diag.valid_mask == (1u << (i-1))-1 && !diag.mismatch_mask);
+        assert(s.status == DP_METER_INVALID && fake.calls == i);
+    }
+    fake = (fake_t){.change=true};
+    dp_meter_sweep_observed(&s, fake_read, &fake, &diag);
+    assert(diag.valid_mask == 0x7fff && diag.mismatch_mask == 1);
+    assert(s.status == DP_METER_INVALID && diag.reread[0] == 1);
+    fake = (fake_t){0};
+    dp_meter_sweep_observed(&s, fake_read, &fake, &diag);
+    assert(diag.valid_mask == 0x7fff && !diag.mismatch_mask && s.status == DP_METER_FRESH);
     return 0;
 }

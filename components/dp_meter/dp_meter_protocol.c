@@ -138,42 +138,71 @@ dp_meter_values_t dp_meter_values(const dp_meter_snapshot_t *s)
     return v;
 }
 
-void dp_meter_sweep(dp_meter_snapshot_t *s, dp_meter_read_fn read, void *ctx)
+void dp_meter_sweep_observed(dp_meter_snapshot_t *s, dp_meter_read_fn read,
+                             void *ctx, dp_meter_sweep_diag_t *diag)
 {
     *s = (dp_meter_snapshot_t){0};
-     bool ok =
-         read(ctx, 0x00, 2, &s->syscon) &&
-         read(ctx, 0x01, 2, &s->emucon) &&
-         read(ctx, 0x02, 2, &s->hfconst) &&
-         read(ctx, 0x13, 2, &s->emucon2) &&
-         read(ctx, 0x72, 2, &s->voltage_coef) &&
-         read(ctx, 0x70, 2, &s->current_coef) &&
-         read(ctx, 0x73, 2, &s->power_coef) &&
-         read(ctx, 0x26, 3, &s->voltage_raw) &&
-         read(ctx, 0x24, 3, &s->current_raw) &&
-         read(ctx, 0x2c, 4, &s->power_raw) &&
-         read(ctx, 0x23, 2, &s->frequency_raw);
-     // Recheck configuration to reject a reset/change during the sweep.
-     uint32_t syscon, emucon, hfconst, emucon2;
-     ok = ok && read(ctx, 0x00, 2, &syscon) &&
-         read(ctx, 0x01, 2, &emucon) && read(ctx, 0x02, 2, &hfconst) &&
-         read(ctx, 0x13, 2, &emucon2) &&
-         syscon == s->syscon && emucon == s->emucon &&
-         hfconst == s->hfconst && emucon2 == s->emucon2;
-     s->status = ok ? DP_METER_FRESH : DP_METER_INVALID;
+    *diag = (dp_meter_sweep_diag_t){0};
+    const uint8_t regs[] = {0x00, 0x01, 0x02, 0x13, 0x72, 0x70, 0x73,
+                            0x26, 0x24, 0x2c, 0x23, 0x00, 0x01, 0x02, 0x13};
+    const size_t widths[] = {2,2,2,2,2,2,2,3,3,4,2,2,2,2,2};
+    uint32_t *values[] = {&s->syscon, &s->emucon, &s->hfconst, &s->emucon2,
+                          &s->voltage_coef, &s->current_coef, &s->power_coef,
+                          &s->voltage_raw, &s->current_raw, &s->power_raw,
+                          &s->frequency_raw, &diag->reread[0], &diag->reread[1],
+                          &diag->reread[2], &diag->reread[3]};
+    s->status = DP_METER_INVALID;
+    for (unsigned i = 0; i < 15; ++i) {
+        if (!read(ctx, regs[i], widths[i], values[i])) return;
+        diag->valid_mask |= (uint16_t)(1u << i);
+    }
+    for (unsigned i = 0; i < 4; ++i)
+        if (*values[i] != diag->reread[i]) diag->mismatch_mask |= (uint8_t)(1u << i);
+    if (!diag->mismatch_mask) s->status = DP_METER_FRESH;
+}
+
+void dp_meter_sweep(dp_meter_snapshot_t *s, dp_meter_read_fn read, void *ctx)
+{
+    dp_meter_sweep_diag_t diag;
+    dp_meter_sweep_observed(s, read, ctx, &diag);
+}
+
+bool dp_meter_transaction_observed(const dp_meter_io_t *io, uint8_t reg,
+                          size_t width, uint32_t *value, dp_meter_tx_diag_t *d)
+{
+    uint8_t req[2];
+    *d = (dp_meter_tx_diag_t){.reg = reg, .width = (uint8_t)width};
+    if (!dp_meter_request(reg, width, req) || !value) {
+        d->result = DP_METER_TX_ARGUMENT; return false;
+    }
+    if (!io->flush(io->ctx)) { d->result = DP_METER_TX_FLUSH; return false; }
+    if (!io->send(io->ctx, req, sizeof(req))) { d->result = DP_METER_TX_SEND; return false; }
+    d->receive_attempted = true;
+    d->received = io->receive(io->ctx, d->reply, width + 1, 80);
+    if (d->received != (int)(width + 1)) {
+        d->result = d->received < 0 ? DP_METER_TX_RX_ERROR :
+                    d->received == 0 ? DP_METER_TX_TIMEOUT : DP_METER_TX_LENGTH;
+        return false;
+    }
+    d->guard_attempted = true;
+    d->guard_result = io->receive(io->ctx, &d->guard_byte, 1, 5);
+    if (d->guard_result != 0) {
+        d->result = d->guard_result < 0 ? DP_METER_TX_GUARD_ERROR : DP_METER_TX_TRAILING;
+        return false;
+    }
+    uint8_t sum = (uint8_t)(req[0] + req[1]);
+    for (size_t i = 0; i < width; ++i) sum = (uint8_t)(sum + d->reply[i]);
+    d->expected_checksum = (uint8_t)(sum ^ 0xffu);
+    d->checksum_available = true;
+    if (!dp_meter_decode(reg, width, d->reply, (size_t)d->received, value)) {
+        d->result = DP_METER_TX_CHECKSUM; return false;
+    }
+    return true;
 }
 
 bool dp_meter_transaction(const dp_meter_io_t *io, uint8_t reg,
                           size_t width, uint32_t *value)
 {
-    uint8_t req[2], reply[5], extra;
-    if (!dp_meter_request(reg, width, req) || !value) return false;
-    if (!io->flush(io->ctx) || !io->send(io->ctx, req, sizeof(req))) return false;
-    int n = io->receive(io->ctx, reply, width + 1, 80);
-    if (n != (int)(width + 1)) return false;
-    // Reject trailing bytes within a short guard window before another request.
-    // A failed transaction aborts the sweep; the task waits one second before
-    // flushing and retrying. This is not a guarantee against arbitrary delays.
-    if (io->receive(io->ctx, &extra, 1, 5) != 0) return false;
-    return dp_meter_decode(reg, width, reply, (size_t)n, value);
+    dp_meter_tx_diag_t diag;
+    return dp_meter_transaction_observed(io, reg, width, value, &diag);
 }

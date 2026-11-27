@@ -42,3 +42,29 @@ typedef struct {
 } dp_meter_io_t;
 bool dp_meter_transaction(const dp_meter_io_t *io, uint8_t reg,
                           size_t width, uint32_t *value);
+
+/* Observations only; no change to transaction or sweep acceptance. */
+typedef enum {
+    DP_METER_TX_OK = 0, DP_METER_TX_ARGUMENT, DP_METER_TX_FLUSH,
+    DP_METER_TX_SEND, DP_METER_TX_RX_ERROR, DP_METER_TX_TIMEOUT,
+    DP_METER_TX_LENGTH, DP_METER_TX_GUARD_ERROR, DP_METER_TX_TRAILING,
+    DP_METER_TX_CHECKSUM, DP_METER_TX_COUNT
+} dp_meter_tx_result_t;
+
+typedef struct {
+    dp_meter_tx_result_t result;
+    uint8_t reg, width, reply[5], expected_checksum, guard_byte;
+    int received, guard_result;
+    bool receive_attempted, guard_attempted, checksum_available;
+} dp_meter_tx_diag_t;
+
+typedef struct {
+    uint16_t valid_mask; /* bits 0..14 in existing sweep order */
+    uint8_t mismatch_mask; /* configuration order: 00, 01, 02, 13 */
+    uint32_t reread[4];
+} dp_meter_sweep_diag_t;
+
+bool dp_meter_transaction_observed(const dp_meter_io_t *io, uint8_t reg,
+    size_t width, uint32_t *value, dp_meter_tx_diag_t *diag);
+void dp_meter_sweep_observed(dp_meter_snapshot_t *s, dp_meter_read_fn read,
+    void *ctx, dp_meter_sweep_diag_t *diag);
