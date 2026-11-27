@@ -15,6 +15,7 @@ on:
       - components/**
       - tests/test_meter_protocol.c
       - tests/test_meter_json.c
+      - tests/test_native_api_version.py
       - docs/API.md
       - tests/check_dc_ui_pin.py
       - tests/test_dragon_core_source_policy.py
@@ -37,6 +38,7 @@ on:
       - components/**
       - tests/test_meter_protocol.c
       - tests/test_meter_json.c
+      - tests/test_native_api_version.py
       - docs/API.md
       - tests/check_dc_ui_pin.py
       - tests/test_dragon_core_source_policy.py
@@ -84,6 +86,9 @@ jobs:
             components/dp_portal/dp_meter_json.c tests/test_meter_json.c \
             $(pkg-config --libs libcjson) -o /tmp/test_meter_json
           /tmp/test_meter_json
+
+      - name: Execute native info API version contract test
+        run: python3 tests/test_native_api_version.py
 
       - name: Check unsupported events route contract
         run: python3 tests/check_events_route.py

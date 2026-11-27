@@ -39,11 +39,33 @@ Returns product identity and UI capabilities. Current fields include:
 
 - `product`, `display_name`
 - `version` and `firmware`
+- `api_version`: integer native product API compatibility version (currently `2`)
 - `device_id`, `boot_id`
 - optional `inactive_slot`
 - `capabilities`: V1 advertises `power_switch`, `usb_switch`, and `polling`.
   V2 currently advertises only `polling`.
 - `ui` descriptor
+
+#### Native API compatibility
+
+`api_version` identifies the product-local native HTTP contract, independently of
+firmware release numbering, `ui.schema`, and the route namespace. Version 2
+is the initial explicitly advertised contract. Adding optional fields,
+endpoints or capabilities without changing existing behavior does not change
+this number. Removing required fields or incompatibly changing field types,
+units, command semantics or required authorization increments it. Corrections
+to documented behavior do not by themselves require a version increment.
+Clients must ignore unknown optional fields and capabilities, and must not
+assume absent capabilities are supported.
+
+Clients should validate product identity and an explicitly supported integer
+API version before using native operations. A missing field identifies legacy,
+unversioned firmware: only deliberately supported legacy behavior may be used,
+with response validation and capability checks. Mutation requires explicit
+support for that legacy contract. A malformed or unsupported advertised
+version must disable native operations and must not trigger fallback to stock
+commands or compatibility telemetry. Shared dragon-core and UI contracts are
+not versioned by this field.
 
 ### `GET /api/v2/state`
 
