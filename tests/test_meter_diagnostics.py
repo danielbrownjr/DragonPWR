@@ -19,7 +19,7 @@ typedef void httpd_req_t;
 static const char *error;
 #if defined(CONFIG_IDF_TARGET_ESP32C2)
 static dp_meter_diag_t fixture;
-static dp_meter_diag_t dp_meter_diagnostics(void) { return fixture; }
+dp_meter_diag_t dp_meter_diagnostics(void) { return fixture; }
 static void httpd_resp_set_hdr(httpd_req_t *r, const char *k, const char *v)
 { (void)r; assert(!strcmp(k,"Cache-Control") && !strcmp(v,"no-store")); }
 static esp_err_t send_json(httpd_req_t *r, cJSON *j) { (void)r; return j; }
