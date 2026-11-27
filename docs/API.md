@@ -333,8 +333,8 @@ power API or proof of safe reset/output isolation. See
 
 ### `GET /api/v2/diag/meter` (experimental V1 diagnostics)
 
-Uses the existing control-header authorization gate; denied requests return 403.
-V2 returns 404 after authorization. This GET copies a bounded RAM snapshot;
+Public read-only LAN diagnostic, like native state; no control header required.
+V2 returns 404. This GET copies a bounded RAM snapshot;
 it does not issue UART requests, reset counters, write registers or alter outputs.
 Boot-local counters wrap modulo 2^32. The attempt, completed, success and
 failure timestamps are monotonic microseconds since boot (zero means no event).

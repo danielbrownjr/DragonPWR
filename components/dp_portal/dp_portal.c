@@ -974,8 +974,6 @@ static esp_err_t http_diag_get(httpd_req_t *req)
 // Meter diagnostics are a bounded RAM snapshot, never a hardware transaction.
 static esp_err_t meter_diag_get(httpd_req_t *req)
 {
-    if (!authorize(req, NULL))
-        return send_error(req, "403 Forbidden", "authorization required");
 #if defined(CONFIG_IDF_TARGET_ESP32C2)
     dp_meter_diag_t d = dp_meter_diagnostics();
     const dp_meter_tx_diag_t *t = &d.last_failure;

@@ -14,7 +14,7 @@ static bool fake_read(void *ctx, uint8_t reg, size_t width, uint32_t *value)
 }
 typedef struct {
     unsigned step;
-    bool flush_fail, send_fail, extra;
+    bool flush_fail, send_fail, extra, guard_error;
     int reply_count;
     uint8_t checksum;
 } mock_io_t;
@@ -42,7 +42,7 @@ static int mock_receive(void *ctx, uint8_t *bytes, size_t count, unsigned ms)
     }
     assert(m->step == 4 && count == 1 && ms == 5);
     if (m->extra) bytes[0] = 0xff;
-    return m->extra ? 1 : 0;
+    return m->guard_error ? -1 : m->extra ? 1 : 0;
 }
 int main(void)
 {
@@ -203,6 +203,9 @@ int main(void)
     assert(tx.result == DP_METER_TX_SEND);
     assert(!dp_meter_transaction_observed(&io, 0x42, 2, &value, &tx));
     assert(tx.result == DP_METER_TX_ARGUMENT);
+    mock = (mock_io_t){.reply_count=4, .checksum=0x2e, .guard_error=true};
+    assert(!dp_meter_transaction_observed(&io, 0x26, 3, &value, &tx));
+    assert(tx.result == DP_METER_TX_GUARD_ERROR && tx.guard_result == -1);
     dp_meter_sweep_diag_t diag;
     for (unsigned i = 1; i <= 15; ++i) {
         fake = (fake_t){.fail_at=i};
