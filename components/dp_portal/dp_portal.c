@@ -37,6 +37,7 @@ static const char *TAG = "dp_portal";
 
 #define DP_PRODUCT      "dragonpwr"
 #define DP_DISPLAY_NAME "DragonPWR"
+#define DP_API_VERSION  2
 
 // The family shares one NVS namespace, same as dp_relay and the stock firmware.
 #define DP_NVS_NAMESPACE "app_nvs"
@@ -273,6 +274,10 @@ static esp_err_t info_get(httpd_req_t *req)
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "product", DP_PRODUCT);
     cJSON_AddStringToObject(root, "display_name", DP_DISPLAY_NAME);
+    if (!cJSON_AddNumberToObject(root, "api_version", DP_API_VERSION)) {
+        cJSON_Delete(root);
+        return send_error(req, "500 Internal Server Error", "out of memory");
+    }
     cJSON_AddStringToObject(root, "version", app ? app->version : "unknown");
     // dc_ui reads the running version from "firmware" (footer, Maintenance,
     // and the only on-screen way to tell an OTA stuck); "version" stays for
