@@ -982,6 +982,20 @@ static esp_err_t meter_diag_get(httpd_req_t *req)
     cJSON *root = cJSON_CreateObject();
     if (!root) goto fail;
 #define NUM(obj, key, value) do { if (!cJSON_AddNumberToObject(obj, key, value)) goto fail; } while (0)
+    NUM(root, "now_us", d.now_us);
+    if (!cJSON_AddBoolToObject(root, "frame_monitor_enabled", d.frame_monitor_enabled)) goto fail;
+    NUM(root, "uart_data_events", d.uart_data_events);
+    NUM(root, "uart_data_bytes", d.uart_data_bytes);
+    NUM(root, "uart_break", d.uart_break);
+    cJSON *positions = cJSON_AddArrayToObject(root, "positions");
+    if (!positions) goto fail;
+    for (unsigned i = 0; i < 15; ++i) {
+        cJSON *p = cJSON_CreateObject();
+        if (!p || !cJSON_AddItemToArray(positions, p)) { cJSON_Delete(p); goto fail; }
+        NUM(p, "index", i+1);
+        NUM(p, "attempts", d.position_attempts[i]);
+        NUM(p, "timeouts", d.position_timeouts[i]);
+    }
     NUM(root, "sweeps", d.sweeps);
     NUM(root, "successful_sweeps", d.successful_sweeps);
     NUM(root, "config_mismatches", d.config_mismatches);
@@ -1010,6 +1024,18 @@ static esp_err_t meter_diag_get(httpd_req_t *req)
     if (!cJSON_AddStringToObject(f, "reason", reason)) goto fail;
     NUM(f, "register", t->reg);
     NUM(f, "width", t->width);
+    if (d.failed_read_index) {
+        NUM(f, "send_return_us", d.last_send_us);
+        NUM(f, "rx_return_us", d.last_rx_us);
+        NUM(f, "guard_end_us", d.last_guard_us);
+        NUM(f, "prior_success_us", d.prior_success_us);
+    }
+    if (d.failed_read_index && t->result == DP_METER_TX_TIMEOUT) {
+        NUM(f, "fifo_count", d.timeout_fifo_count);
+        NUM(f, "raw_irq", d.timeout_raw_irq);
+        NUM(f, "enabled_irq", d.timeout_enabled_irq);
+        if (d.timeout_ring_valid) NUM(f, "ring_bytes", d.timeout_ring_bytes);
+    }
     if (t->receive_attempted) NUM(f, "received", t->received);
     if (t->guard_attempted) {
         NUM(f, "guard_result", t->guard_result);

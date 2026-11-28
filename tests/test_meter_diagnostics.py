@@ -33,6 +33,10 @@ int main(void) {
     cJSON *j = meter_diag_get(NULL);
     assert(j && !strcmp(F(F(j,"last_failure"),"reason")->valuestring,"none"));
     cJSON_Delete(j);
+    fixture.now_us=200;
+    fixture.frame_monitor_enabled=true;
+    fixture.position_attempts[7]=3;
+    fixture.position_timeouts[7]=1;
     fixture.failure_us=100;
     fixture.failed_read_index=8;
     fixture.failure_sweep.valid_mask=127;
@@ -42,6 +46,10 @@ int main(void) {
     fixture.transaction_counts[DP_METER_TX_CHECKSUM]=1;
     j=meter_diag_get(NULL);
     assert(j && !error);
+    assert(F(j,"now_us")->valueint==200);
+    assert(cJSON_IsTrue(F(j,"frame_monitor_enabled")));
+    assert(cJSON_GetArraySize(F(j,"positions"))==15);
+    assert(F(cJSON_GetArrayItem(F(j,"positions"),7),"timeouts")->valueint==1);
     cJSON *f=F(j,"last_failure");
     assert(!strcmp(F(f,"reason")->valuestring,"checksum"));
     assert(F(f,"register")->valueint==38);
