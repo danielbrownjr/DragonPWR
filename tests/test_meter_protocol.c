@@ -6,7 +6,9 @@ typedef struct { unsigned calls, fail_at; bool change; } fake_t;
 static bool fake_read(void *ctx, uint8_t reg, size_t width, uint32_t *value)
 {
     fake_t *f = ctx;
+    const uint8_t order[] = {0x00,0x01,0x13,0x02,0x72,0x70,0x73,0x26,0x24,0x2c,0x23,0x00,0x01,0x02,0x13};
     uint8_t req[2];
+    assert(f->calls < 15 && reg == order[f->calls]);
     assert(dp_meter_request(reg, width, req));
     if (++f->calls == f->fail_at) return false;
     *value = (reg == 0 && f->change && f->calls > 11) ? 1u : reg;
@@ -210,7 +212,8 @@ int main(void)
     for (unsigned i = 1; i <= 15; ++i) {
         fake = (fake_t){.fail_at=i};
         dp_meter_sweep_observed(&s, fake_read, &fake, &diag);
-        assert(diag.valid_mask == (1u << (i-1))-1 && !diag.mismatch_mask);
+        const unsigned mask = i == 4 ? 0x0b : (1u << (i-1))-1;
+        assert(diag.valid_mask == mask && !diag.mismatch_mask);
         assert(s.status == DP_METER_INVALID && fake.calls == i);
     }
     fake = (fake_t){.change=true};
