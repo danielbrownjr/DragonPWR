@@ -17,7 +17,13 @@ typedef struct {
     dp_meter_tx_diag_t last_failure;
     uint8_t failed_read_index;
     dp_meter_sweep_diag_t sweep, failure_sweep;
-    dp_meter_snapshot_t partial, failed_partial;
+    dp_meter_snapshot_t failed_partial;
+    uint32_t position_attempts[15], position_timeouts[15];
+    uint32_t uart_data_events, uart_data_bytes, uart_break;
+    bool frame_monitor_enabled;
+    int64_t now_us, last_send_us, last_rx_us, last_guard_us, prior_success_us;
+    uint32_t timeout_fifo_count, timeout_raw_irq, timeout_enabled_irq, timeout_ring_bytes;
+    bool timeout_ring_valid;
 } dp_meter_diag_t;
 
 dp_meter_diag_t dp_meter_diagnostics(void);

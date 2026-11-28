@@ -355,3 +355,5 @@ Missing configuration keys were not successfully read. These diagnostics
 are not qualified measurements. The native state meter validity and
 read-only allowlist remain unchanged. Instrumentation may perturb timing;
 compare behavior with the uninstrumented baseline.
+
+Experimental timing diagnostics add boot-relative now_us, per-position cumulative attempts/timeouts, UART DATA event/byte and BREAK counts, frame-monitor enable readback, and retained failure API-return timestamps. Timeout FIFO occupancy, raw/enabled interrupt masks and optional ring length are non-atomic observations after the receive call, not wire traces. Event counts are lossy. No FIFO data is consumed by diagnostics. Zero timestamp means not reached. Position indexes are one-based, counters wrap as before.
