@@ -982,6 +982,7 @@ static esp_err_t meter_diag_get(httpd_req_t *req)
     cJSON *root = cJSON_CreateObject();
     if (!root) goto fail;
 #define NUM(obj, key, value) do { if (!cJSON_AddNumberToObject(obj, key, value)) goto fail; } while (0)
+    if (!cJSON_AddStringToObject(root, "experiment", "swap_hfconst_emucon2")) goto fail;
     NUM(root, "now_us", d.now_us);
     if (!cJSON_AddBoolToObject(root, "frame_monitor_enabled", d.frame_monitor_enabled)) goto fail;
     NUM(root, "uart_data_events", d.uart_data_events);

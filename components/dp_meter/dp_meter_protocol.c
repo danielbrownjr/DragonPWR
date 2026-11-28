@@ -153,8 +153,9 @@ void dp_meter_sweep_observed(dp_meter_snapshot_t *s, dp_meter_read_fn read,
                           &diag->reread[2], &diag->reread[3]};
     s->status = DP_METER_INVALID;
     for (unsigned i = 0; i < 15; ++i) {
-        if (!read(ctx, regs[i], widths[i], values[i])) return;
-        diag->valid_mask |= (uint16_t)(1u << i);
+        const unsigned logical = i == 2 ? 3 : i == 3 ? 2 : i;
+        if (!read(ctx, regs[logical], widths[logical], values[logical])) return;
+        diag->valid_mask |= (uint16_t)(1u << logical);
     }
     for (unsigned i = 0; i < 4; ++i)
         if (*values[i] != diag->reread[i]) diag->mismatch_mask |= (uint8_t)(1u << i);

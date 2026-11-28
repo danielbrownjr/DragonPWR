@@ -357,3 +357,5 @@ read-only allowlist remain unchanged. Instrumentation may perturb timing;
 compare behavior with the uninstrumented baseline.
 
 Experimental timing diagnostics add boot-relative now_us, per-position cumulative attempts/timeouts, UART DATA event/byte and BREAK counts, frame-monitor enable readback, and retained failure API-return timestamps. Timeout FIFO occupancy, raw/enabled interrupt masks and optional ring length are non-atomic observations after the receive call, not wire traces. Event counts are lossy. No FIFO data is consumed by diagnostics. Zero timestamp means not reached. Position indexes are one-based, counters wrap as before.
+
+Order experiment B swaps first-pass HFConst and EMUCON2 only. Position counters and failed read_index follow physical request order; valid_mask continues to use canonical logical register bits, so configuration keys and consistency checks remain correct. Reread order is unchanged. The diagnostic experiment label identifies this variant.
